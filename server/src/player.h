@@ -16,11 +16,11 @@ struct Player
 {
   std::string sess_id;
   float x, y;
-  int health;
+  float health = 100.0f;
   struct Campsite
   {
     float xpos, ypos;
-    float fuel;
+    float fuel = 0.0f;
   } campsite;
   std::string name;
   std::vector<InventoryItem> inven;
