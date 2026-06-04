@@ -10,6 +10,7 @@ struct WorldItem
   std::string subtype;
   float x;
   float y;
+  bool active = false;
 };
 
 constexpr int MAP_WIDTH = 20;

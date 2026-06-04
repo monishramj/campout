@@ -4,9 +4,9 @@
 enum TileType
 {
   GRASS,
-  FOREST,
-  WALL,
   HOUSE_FLOOR,
+  WALL,
+  FOREST,
   WATER
 };
 

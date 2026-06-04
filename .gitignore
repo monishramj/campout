@@ -1,3 +1,6 @@
 # Claude stuff
 .claude
 CLAUDE.md
+
+# CMake build output
+server/build

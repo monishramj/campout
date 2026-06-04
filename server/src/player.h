@@ -20,7 +20,7 @@ struct Player
   struct Campsite
   {
     float xpos, ypos;
-    float fuel = 0.0f;
+    float fuel = 100.0f;
   } campsite;
   std::string name;
   std::vector<InventoryItem> inven;
