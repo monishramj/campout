@@ -10,6 +10,10 @@
 constexpr int TICK_RATE = 50;
 constexpr float CAMPFIRE_RATE = .083f;
 
+constexpr float HEALTH_DRAIN_RATE = .04f;
+constexpr float FOOD_DRAIN_RATE = .02f;
+constexpr float FOOD_RESTORE = 25.0f;
+constexpr float FUEL_RESTORE = 30.0f;
 constexpr float PICKUP_RADIUS = 0.6f;
 constexpr float PLAYER_SPEED = .1f;
 constexpr int SPAWN_X = 10;
@@ -25,6 +29,7 @@ void tick();
 void add_player(Player player);
 void remove_player(std::string sess_id);
 void move_player(std::string sess_id, InputType dir);
+void handle_player_action(std::string sess_id, std::string action_json);
 std::string get_state();
 
 #endif

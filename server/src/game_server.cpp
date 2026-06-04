@@ -17,6 +17,7 @@ struct InputMsg
   std::string sess_id;
   std::string type;
   std::string json;
+  int client_fd;
 };
 
 static std::queue<InputMsg> input_q;
@@ -44,7 +45,7 @@ static void handle_connections(int client_fd)
       try
       {
         nlohmann::json j = nlohmann::json::parse(line);
-        InputMsg msg = {j["sess_id"], j["type"], line};
+        InputMsg msg = {j.value("sess_id", ""), j["type"], line, client_fd};
         std::lock_guard<std::mutex> lock(mutex_q);
         input_q.push(msg);
       }
@@ -134,7 +135,7 @@ void move_player(std::string sess_id, InputType dir)
 
   if (new_x >= 0 && new_x < MAP_WIDTH && new_y >= 0 && new_y < MAP_HEIGHT)
   {
-    if (map[(int)new_x][(int)new_y] < WALL)
+    if (map[(int)new_x][(int)new_y] < WALL) // make explicit function check
     {
       player.x = new_x;
       player.y = new_y;
@@ -142,9 +143,54 @@ void move_player(std::string sess_id, InputType dir)
   }
 }
 
+void handle_player_action(std::string sess_id, std::string action_json)
+{
+  if (players.find(sess_id) == players.end())
+    return;
+  Player &player = players[sess_id];
+  nlohmann::json j = nlohmann::json::parse(action_json);
+  std::string action = j["action"];
+
+  if (action == "CONSUME")
+  {
+    for (size_t i = 0; i < player.inven.size(); i++)
+    {
+      InventoryItem &item = player.inven[i];
+      if (item.type == FOOD && item.amt > 0)
+      {
+        player.food =
+            ((player.food + FOOD_RESTORE) <= MAX_FOOD) ? (player.food + FOOD_RESTORE)
+                                                       : MAX_FOOD;
+        if (--item.amt <= 0)
+        {
+          player.inven.erase(player.inven.begin() + i);
+        }
+        break;
+      }
+    }
+  }
+  else if (action == "USE_FUEL")
+  {
+    for (size_t i = 0; i < player.inven.size(); i++)
+    {
+      InventoryItem &item = player.inven[i];
+      if (item.type == FUEL && item.amt > 0)
+      {
+        player.campsite.fuel =
+            ((player.campsite.fuel + FUEL_RESTORE) <= MAX_FUEL) ? (player.campsite.fuel + FUEL_RESTORE)
+                                                                : MAX_FUEL;
+        if (--item.amt <= 0)
+        {
+          player.inven.erase(player.inven.begin() + i);
+        }
+        break;
+      }
+    }
+  }
+}
+
 std::string get_state()
 {
-  //?! WIP
   nlohmann::json j;
   j["tick"] = tick_count;
 
@@ -157,6 +203,7 @@ std::string get_state()
                             {"x", player.x},
                             {"y", player.y},
                             {"health", player.health},
+                            {"food", player.food},
                             {"fuel", player.campsite.fuel}});
   }
 
@@ -197,23 +244,59 @@ void tick()
 
     nlohmann::json j = nlohmann::json::parse(msg.json);
     if (msg.type == "add_player")
+    {
       add_player(Player{}); // will be handled by Python later
+    }
     else if (msg.type == "remove_player")
+    {
       remove_player(msg.sess_id);
+    }
     else if (msg.type == "move_player")
+    {
       move_player(msg.sess_id, j["dir"].get<InputType>());
+    }
+    else if (msg.type == "action")
+    {
+      handle_player_action(msg.sess_id, msg.json);
+    }
+    else if (msg.type == "get_state")
+    {
+      std::string state = get_state() + "\n";
+      write(msg.client_fd, state.c_str(), state.size());
+    }
     // TODO: add health checks for combat
   }
 
-  // rate ticks - fuel - items
-
-  // currently looping thru everything: naive approach, cna be fixed later if player map size increases
+  // currently looping thru everything: naive approach, can be fixed later if player map size increases
+  std::vector<std::string> dead_players{};
   for (auto &[sess_id, player] : players)
   {
-    player.campsite.fuel -= CAMPFIRE_RATE;
+    // all rates
+    if (player.campsite.fuel > 0)
+    {
+      player.campsite.fuel -= CAMPFIRE_RATE;
+      if (player.campsite.fuel < 0)
+        player.campsite.fuel = 0;
+    }
 
-    // if (player.health <= 0)
-    //   remove_player(sess_id);
+    if (player.food <= 0)
+    {
+      player.health -= HEALTH_DRAIN_RATE;
+    }
+    else
+    {
+      player.food -= FOOD_DRAIN_RATE;
+      if (player.food < 0)
+        player.food = 0;
+    }
+
+    if (player.health <= 0)
+    {
+      dead_players.push_back(player.sess_id);
+      continue;
+    }
+
+    // item pickups
     for (int i = 0; i < MAX_ITEMS; i++)
     {
       if (!items[i].active)
@@ -232,6 +315,11 @@ void tick()
         items[i].active = false;
       }
     }
+  }
+
+  for (std::string sess_id : dead_players)
+  {
+    remove_player(sess_id);
   }
 }
 
