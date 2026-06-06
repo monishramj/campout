@@ -2,5 +2,12 @@
 .claude
 CLAUDE.md
 
+# VS Code
+/.vscode
+
 # CMake build output
 server/build
+
+# Python stuff
+*/venv
+*/__pycache__

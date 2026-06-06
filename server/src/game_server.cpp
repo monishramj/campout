@@ -93,13 +93,12 @@ static void socket_thread_func()
 void add_player(Player player)
 {
   std::string sess_id = std::to_string(tick_count) + "_" + std::to_string(rand()); // will be handled by Python lter
-  player.sess_id = sess_id;
   player.x = SPAWN_X;
   player.y = SPAWN_Y;
   player.campsite.xpos = SPAWN_X;
   player.campsite.ypos = SPAWN_Y;
 
-  players[sess_id] = player;
+  players[player.sess_id] = player;
 }
 
 void remove_player(std::string sess_id)

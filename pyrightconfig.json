@@ -1,0 +1,8 @@
+{
+  "include": ["gateway"],
+  "pythonVersion": "3.14",
+  "pythonPath": "./gateway/venv/bin/python3",
+  "typeCheckingMode": "basic",
+  "venvPath": "./gateway",
+  "venv": "venv"
+}
