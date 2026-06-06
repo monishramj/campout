@@ -15,7 +15,7 @@ constexpr float FOOD_DRAIN_RATE = .02f;
 constexpr float FOOD_RESTORE = 25.0f;
 constexpr float FUEL_RESTORE = 30.0f;
 constexpr float PICKUP_RADIUS = 0.6f;
-constexpr float PLAYER_SPEED = .1f;
+constexpr float PLAYER_SPEED = .2f;
 constexpr int SPAWN_X = 10;
 constexpr int SPAWN_Y = 10;
 
@@ -31,5 +31,6 @@ void remove_player(std::string sess_id);
 void move_player(std::string sess_id, InputType dir);
 void handle_player_action(std::string sess_id, std::string action_json);
 std::string get_state();
+std::string get_map();
 
 #endif

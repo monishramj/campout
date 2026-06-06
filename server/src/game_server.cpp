@@ -92,7 +92,6 @@ static void socket_thread_func()
 
 void add_player(Player player)
 {
-  std::string sess_id = std::to_string(tick_count) + "_" + std::to_string(rand()); // will be handled by Python lter
   player.x = SPAWN_X;
   player.y = SPAWN_Y;
   player.campsite.xpos = SPAWN_X;
@@ -197,13 +196,22 @@ std::string get_state()
 
   for (auto &[sess_id, player] : players)
   {
+    nlohmann::json inv = nlohmann::json::array();
+    for (auto &item : player.inven)
+      inv.push_back({{"type", item.type},
+                     {"subtype", item.subtype},
+                     {"amt", item.amt}});
+
     j["players"].push_back({{"sess_id", player.sess_id},
                             {"name", player.name},
                             {"x", player.x},
                             {"y", player.y},
                             {"health", player.health},
                             {"food", player.food},
-                            {"fuel", player.campsite.fuel}});
+                            {"fuel", player.campsite.fuel},
+                            {"campsite_x", player.campsite.xpos},
+                            {"campsite_y", player.campsite.ypos},
+                            {"inventory", inv}});
   }
 
   j["items"] = nlohmann::json::array();
@@ -217,6 +225,22 @@ std::string get_state()
                           {"y", item.y}});
   }
 
+  return j.dump();
+}
+
+std::string get_map()
+{
+  nlohmann::json j;
+  j["width"] = MAP_WIDTH;
+  j["height"] = MAP_HEIGHT;
+  j["tiles"] = nlohmann::json::array();
+  for (int x = 0; x < MAP_WIDTH; x++)
+  {
+    nlohmann::json col = nlohmann::json::array();
+    for (int y = 0; y < MAP_HEIGHT; y++)
+      col.push_back((int)map[x][y]);
+    j["tiles"].push_back(col);
+  }
   return j.dump();
 }
 
@@ -244,7 +268,9 @@ void tick()
     nlohmann::json j = nlohmann::json::parse(msg.json);
     if (msg.type == "add_player")
     {
-      add_player(Player{}); // will be handled by Python later
+      Player p{};
+      p.sess_id = msg.sess_id;
+      add_player(p);
     }
     else if (msg.type == "remove_player")
     {
@@ -262,6 +288,11 @@ void tick()
     {
       std::string state = get_state() + "\n";
       write(msg.client_fd, state.c_str(), state.size());
+    }
+    else if (msg.type == "get_map")
+    {
+      std::string m = get_map() + "\n";
+      write(msg.client_fd, m.c_str(), m.size());
     }
     // TODO: add health checks for combat
   }

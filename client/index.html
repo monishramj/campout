@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nightfall</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <!-- Phaser as a global; the module scripts below use window.Phaser. -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+</head>
+<body>
+  <!-- Game canvas mounts here -->
+  <div id="game-container"></div>
+
+  <!-- HUD overlay (hidden until in-game) -->
+  <div id="hud" class="hidden">
+    <div class="meter">
+      <label>Health <span id="val-health">100</span></label>
+      <div class="bar-track"><div id="bar-health" class="bar health"></div></div>
+    </div>
+    <div class="meter">
+      <label>Food <span id="val-food">100</span></label>
+      <div class="bar-track"><div id="bar-food" class="bar food"></div></div>
+    </div>
+    <div class="meter">
+      <label>Fuel <span id="val-fuel">100</span></label>
+      <div class="bar-track"><div id="bar-fuel" class="bar fuel"></div></div>
+    </div>
+    <div id="inventory"></div>
+    <div class="hints">
+      <span><kbd>WASD</kbd> move</span>
+      <span><kbd>E</kbd> eat</span>
+      <span><kbd>Q</kbd> refuel</span>
+    </div>
+  </div>
+
+  <!-- Login overlay -->
+  <div id="login-overlay" class="overlay">
+    <div class="panel">
+      <h1>Nightfall</h1>
+      <p class="tagline">Survive the night. Keep the fire lit.</p>
+      <input id="username" type="text" placeholder="Username" autocomplete="off" />
+      <input id="password" type="password" placeholder="Password" autocomplete="off" />
+      <div class="row">
+        <button id="btn-login" class="secondary">Log In</button>
+        <button id="btn-register" class="secondary">Register</button>
+      </div>
+      <button id="btn-guest" class="primary">Play as Guest</button>
+      <p id="auth-msg" class="msg"></p>
+    </div>
+  </div>
+
+  <!-- Death overlay -->
+  <div id="death-overlay" class="overlay hidden">
+    <div class="panel">
+      <h1>You Died</h1>
+      <p class="tagline">The fire went cold.</p>
+      <button id="btn-respawn" class="primary">Play Again</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
