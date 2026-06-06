@@ -15,7 +15,7 @@ TileType map[MAP_WIDTH][MAP_HEIGHT] = {
     {F, G, W, H, H, H, W, G, G, G, G, G, G, G, G, G, G, G, G, F},
     {F, G, W, H, H, H, W, G, G, G, G, G, G, G, G, G, G, G, G, F},
     {F, G, W, H, H, H, W, G, G, G, G, G, G, G, G, G, G, G, G, F},
-    {F, G, W, W, W, W, W, G, G, G, G, G, G, G, G, G, G, G, G, F},
+    {F, G, W, W, H, W, W, G, G, G, G, G, G, G, G, G, G, G, G, F},
     {F, G, G, G, G, G, G, G, G, G, G, G, G, G, G, G, G, G, G, F},
     {F, G, G, G, G, G, G, G, G, G, G, G, G, G, G, G, G, G, G, F},
     {F, G, G, G, G, G, G, G, G, G, G, G, G, G, G, G, G, G, G, F},
