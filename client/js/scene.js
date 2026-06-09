@@ -64,6 +64,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   // Continuous tile coords -> pixel center, with the same vertical flip as tiles.
+  // ! NEEDS FIXING 
   toPixel(ex, ey) {
     return {
       px: ex * TILE_SIZE + TILE_SIZE / 2,

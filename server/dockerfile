@@ -1,0 +1,20 @@
+
+# build all files
+
+FROM ubuntu:22.04 AS builder
+
+RUN  apt-get update &&  apt-get install -y cmake g++ make ca-certificates 
+
+WORKDIR /app
+
+COPY . /app
+
+RUN cmake -B build && cmake --build build
+
+# copy into new dir and run server as container
+
+FROM ubuntu:22.04 AS runner
+
+COPY --from=builder /app/build/campout /usr/local/bin/campout
+
+CMD ["/usr/local/bin/campout"]
