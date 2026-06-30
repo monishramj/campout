@@ -1,7 +1,6 @@
 #ifndef GAME_SERVER
 #define GAME_SERVER
 
-#include "map.h"
 #include "types.h"
 #include "player.h"
 #include <unordered_map>

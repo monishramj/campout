@@ -19,7 +19,9 @@ def upgrade() -> None:
         sa.Column("password_hash", sa.Text(), nullable=True),
         sa.Column("is_guest", sa.Boolean(), server_default="false"),
         sa.Column(
-            "created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()")
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("now()"),
         ),
         sa.Column("cosmetics", postgresql.JSONB(), server_default="{}"),
     )
@@ -28,10 +30,15 @@ def upgrade() -> None:
         "sessions",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
         sa.Column(
-            "player_id", sa.BigInteger(), sa.ForeignKey("players.id"), nullable=False
+            "player_id",
+            sa.BigInteger(),
+            sa.ForeignKey("players.id"),
+            nullable=False,
         ),
         sa.Column(
-            "started_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()")
+            "started_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("now()"),
         ),
         sa.Column("ended_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("days_survived", sa.Integer(), server_default="0"),
@@ -39,7 +46,9 @@ def upgrade() -> None:
         sa.Column("times_starved", sa.Integer(), server_default="0"),
         sa.Column("is_active", sa.Boolean(), server_default="true"),
     )
-    op.create_index("ix_sessions_player_active", "sessions", ["player_id", "is_active"])
+    op.create_index(
+        "ix_sessions_player_active", "sessions", ["player_id", "is_active"]
+    )
     op.create_index("ix_sessions_days_survived", "sessions", ["days_survived"])
 
     op.create_table(
@@ -60,10 +69,16 @@ def upgrade() -> None:
         "campsites",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
         sa.Column(
-            "session_id", sa.BigInteger(), sa.ForeignKey("sessions.id"), nullable=False
+            "session_id",
+            sa.BigInteger(),
+            sa.ForeignKey("sessions.id"),
+            nullable=False,
         ),
         sa.Column(
-            "player_id", sa.BigInteger(), sa.ForeignKey("players.id"), nullable=False
+            "player_id",
+            sa.BigInteger(),
+            sa.ForeignKey("players.id"),
+            nullable=False,
         ),
         sa.Column("xpos", sa.Float(), nullable=False),
         sa.Column("ypos", sa.Float(), nullable=False),
@@ -74,11 +89,16 @@ def upgrade() -> None:
         "map_state",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
         sa.Column(
-            "session_id", sa.BigInteger(), sa.ForeignKey("sessions.id"), nullable=False
+            "session_id",
+            sa.BigInteger(),
+            sa.ForeignKey("sessions.id"),
+            nullable=False,
         ),
         sa.Column("tile_data", postgresql.JSONB(), nullable=False),
         sa.Column(
-            "generated_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()")
+            "generated_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("now()"),
         ),
     )
 
@@ -96,7 +116,8 @@ def upgrade() -> None:
     """)
 
     op.execute(
-        "CREATE UNIQUE INDEX ix_leaderboard_player_id ON leaderboard (player_id)"
+        "CREATE UNIQUE INDEX ix_leaderboard_player_id "
+        "ON leaderboard (player_id)"
     )
 
 

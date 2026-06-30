@@ -38,7 +38,8 @@ async def guest():
     async with db.engine.begin() as conn:
         p_id = await conn.execute(
             text("""
-                INSERT INTO players (is_guest, username) VALUES (true, :guest_username) RETURNING id
+                INSERT INTO players (is_guest, username)
+                VALUES (true, :guest_username) RETURNING id
             """).bindparams(guest_username=guest_username)
         )
         s_id = await conn.execute(
@@ -86,13 +87,17 @@ async def register(item: UserInfoItem):
         async with db.engine.begin() as conn:
             p_id = await conn.execute(
                 text("""
-                    INSERT INTO players (username, password_hash) VALUES (:username, :password) RETURNING id
-                """).bindparams(username=username, password=password.decode("utf-8"))
+                    INSERT INTO players (username, password_hash)
+                    VALUES (:username, :password) RETURNING id
+                """).bindparams(
+                    username=username, password=password.decode("utf-8")
+                )
             )
             s_id = await conn.execute(
                 text(
                     """
-                    INSERT INTO sessions (player_id) VALUES (:p_id) RETURNING id
+                    INSERT INTO sessions (player_id)
+                    VALUES (:p_id) RETURNING id
                 """
                 ).bindparams(p_id=p_id.scalar())
             )
@@ -101,7 +106,9 @@ async def register(item: UserInfoItem):
             await socket_client.send({"type": "add_player", "sess_id": s_id})
             return {"sess_id": s_id}
     except exc.IntegrityError:
-        raise HTTPException(status_code=400, detail="Username already exists")
+        raise HTTPException(
+            status_code=400, detail="Username already exists"
+        )
 
 
 @app.post("/login")
@@ -111,14 +118,17 @@ async def login(item: UserInfoItem):
     async with db.engine.begin() as conn:
         result = await conn.execute(
             text("""
-                SELECT id, password_hash FROM players WHERE username = :username
+                SELECT id, password_hash FROM players
+                WHERE username = :username
             """).bindparams(username=username)
         )
         player = result.fetchone()
         if not player or not bcrypt.checkpw(
             password, player.password_hash.encode("utf-8")
         ):
-            raise HTTPException(status_code=401, detail="Invalid username or password")
+            raise HTTPException(
+                status_code=401, detail="Invalid username or password"
+            )
 
         p_id = player.id
         s_id = await conn.execute(
@@ -157,7 +167,11 @@ async def death_updates():
                     await conn.execute(
                         text(
                             """
-                                UPDATE sessions SET is_active = false, days_survived = :days_survived, kills = :kills, ended_at = now()
+                                UPDATE sessions
+                                SET is_active = false,
+                                    days_survived = :days_survived,
+                                    kills = :kills,
+                                    ended_at = now()
                                 WHERE id = :session_id
                             """
                         ).bindparams(
