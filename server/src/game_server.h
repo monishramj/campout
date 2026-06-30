@@ -9,6 +9,7 @@
 
 constexpr int TICK_RATE = 50;
 constexpr float CAMPFIRE_RATE = .083f;
+constexpr int DAY_LENGTH = 7200;
 
 constexpr float HEALTH_DRAIN_RATE = .04f;
 constexpr float FOOD_DRAIN_RATE = .02f;

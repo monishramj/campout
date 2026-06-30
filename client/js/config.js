@@ -42,14 +42,14 @@ export const ITEM_COLORS = Object.freeze({
 });
 
 export const ITEM_NAMES = Object.freeze({
-  [ITEM.FUEL]: 'Fuel',
-  [ITEM.MELEE]: 'Weapon',
-  [ITEM.FOOD]: 'Food',
+  [ITEM.FUEL]: "Fuel",
+  [ITEM.MELEE]: "Weapon",
+  [ITEM.FOOD]: "Food",
 });
 
 // Rendering
-export const TILE_SIZE = 32;     // pixels per tile
-export const CAMERA_ZOOM = 1.8;  // io-style follow zoom (map is small)
+export const TILE_SIZE = 32; // pixels per tile
+export const CAMERA_ZOOM = 3; // io-style follow zoom (map is small)
 
 export const COLOR_SELF = 0xffe14d;
 export const COLOR_OTHER = 0x4db8ff;
@@ -58,11 +58,13 @@ export const COLOR_FIRE_OUT = 0x555555;
 
 // Network / cadence
 export const ENDPOINTS = Object.freeze({
-  guest: '/guest',
-  state: '/state',
-  map: '/map',
-  input: '/input',
+  guest: "/guest",
+  login: "/login",
+  register: "/register",
+  state: "/state",
+  map: "/map",
+  input: "/input",
 });
 
-export const INPUT_MS = 50;  // how often held movement keys are sent
-export const POLL_MS = 100;  // how often /state is polled
+export const INPUT_MS = 50; // how often held movement keys are sent
+export const POLL_MS = 100; // how often /state is polled

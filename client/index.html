@@ -36,17 +36,18 @@
 
   <!-- Login overlay -->
   <div id="login-overlay" class="overlay">
-    <div class="panel">
-      <h1>Campout</h1>
-      <p class="tagline">Survive. Keep the fire lit.</p>
-      <input id="username" type="text" placeholder="Username" autocomplete="off" />
-      <input id="password" type="password" placeholder="Password" autocomplete="off" />
-      <div class="row">
-        <button id="btn-login" class="secondary">Log In</button>
-        <button id="btn-register" class="secondary">Register</button>
+    <div class="menu-wrapper">
+      <img id="logo" src="assets/CAMPOUT-no-bg.png" alt="Campout" />
+      <div class="panel">
+        <input id="username" type="text" placeholder="Username" autocomplete="off" />
+        <input id="password" type="password" placeholder="Password" autocomplete="off" />
+        <div class="row">
+          <button id="btn-login" class="secondary">Log In</button>
+          <button id="btn-register" class="secondary">Register</button>
+        </div>
+        <button id="btn-guest" class="primary">Play as Guest</button>
+        <p id="auth-msg" class="msg"></p>
       </div>
-      <button id="btn-guest" class="primary">Play as Guest</button>
-      <p id="auth-msg" class="msg"></p>
     </div>
   </div>
 

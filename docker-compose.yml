@@ -7,16 +7,22 @@ services:
     networks:
       - campout_net
   gateway:
-    build: 
+    build:
       context: .
       dockerfile: gateway/dockerfile
     image: ghcr.io/monishramj/campout-gateway:latest
-    depends_on: 
-      - server
+    depends_on:
+      server:
+        condition: service_started
+      db:
+        condition: service_healthy
     ports:
       - 8000:8000
     volumes:
       - campout_socket:/tmp
+      - ./client:/client
+    environment:
+      - DATABASE_URL=postgresql://val:val@db:5432/val
     networks:
       - campout_net
   db:
@@ -27,8 +33,18 @@ services:
       - POSTGRES_DB=val
     networks:
       - campout_net
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U val -d val"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
 volumes:
   campout_socket:
+  postgres_data:
 networks:
   campout_net:
     driver: bridge

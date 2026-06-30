@@ -10,6 +10,32 @@ export async function guest() {
   return res.json(); // { sess_id }
 }
 
+export async function login(username, password) {
+  const res = await fetch(ENDPOINTS.login, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail ?? `Login failed: ${res.status}`);
+  }
+  return res.json(); // { sess_id }
+}
+
+export async function register(username, password) {
+  const res = await fetch(ENDPOINTS.register, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail ?? `Register failed: ${res.status}`);
+  }
+  return res.json(); // { sess_id }
+}
+
 export async function getMap() {
   const res = await fetch(ENDPOINTS.map);
   if (!res.ok) throw new Error(`map failed: ${res.status}`);

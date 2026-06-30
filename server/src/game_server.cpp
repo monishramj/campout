@@ -20,8 +20,17 @@ struct InputMsg
   int client_fd;
 };
 
+struct DeathEvent
+{
+  std::string sess_id;
+  int kills;
+  int days_survived;
+};
+
 static std::queue<InputMsg> input_q;
+static std::queue<DeathEvent> death_q;
 static std::mutex mutex_q;
+
 std::unordered_map<std::string, Player> players{};
 int tick_count = 0;
 int server_fd = -1;
@@ -96,6 +105,7 @@ void add_player(Player player)
   player.y = SPAWN_Y;
   player.campsite.xpos = SPAWN_X;
   player.campsite.ypos = SPAWN_Y;
+  player.joined_tick = tick_count;
 
   players[player.sess_id] = player;
 }
@@ -244,6 +254,21 @@ std::string get_map()
   return j.dump();
 }
 
+std::string _get_deaths()
+{
+    nlohmann::json j;
+    j["deaths"] = nlohmann::json::array();
+    while (!death_q.empty())
+    {
+        DeathEvent event = death_q.front();
+        death_q.pop();
+        j["deaths"].push_back({{"sess_id", event.sess_id},
+                             {"kills", event.kills},
+                             {"days_survived", event.days_survived}});
+    }
+    return j.dump();
+}
+
 void tick()
 {
   tick_count++;
@@ -274,6 +299,9 @@ void tick()
     }
     else if (msg.type == "remove_player")
     {
+      // phase 3: mark sessions inactive, meaning equivalent to death so a session stops then
+      // make sure that way the days survived is counted accurately
+      // if player leaves they must restart the game to play again, so they will have to start from day 1
       remove_player(msg.sess_id);
     }
     else if (msg.type == "move_player")
@@ -293,6 +321,14 @@ void tick()
     {
       std::string m = get_map() + "\n";
       write(msg.client_fd, m.c_str(), m.size());
+    }
+    else if (msg.type == "get_deaths")
+    {
+        std::string deaths = _get_deaths() + "\n";
+        write(msg.client_fd, deaths.c_str(), deaths.size());
+    }
+    else {
+        std::cerr << "Unknown message type: " << msg.type << std::endl;
     }
     // TODO: add health checks for combat
   }
@@ -349,7 +385,10 @@ void tick()
 
   for (std::string sess_id : dead_players)
   {
-    remove_player(sess_id);
+      int days_survived = (tick_count - players[sess_id].joined_tick) / DAY_LENGTH;
+      DeathEvent event = {sess_id,  players[sess_id].kills, days_survived};
+      death_q.push(event);
+      remove_player(sess_id);
   }
 }
 

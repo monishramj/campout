@@ -38,6 +38,7 @@ export class GameScene extends Phaser.Scene {
     // each poll since they disappear on pickup.
     this.playerMarkers = new Map();
     this.campMarkers = new Map();
+    this.handMarkers = new Map();
     this.itemMarkers = [];
 
     // Movement: track held WASD and emit on a fixed cadence (decoupled from the
@@ -126,12 +127,34 @@ export class GameScene extends Phaser.Scene {
       let m = this.playerMarkers.get(p.sess_id);
       if (!m) {
         const isSelf = p.sess_id === this.sessId;
-        m = this.add.rectangle(pos.px, pos.py, TILE_SIZE * 0.7, TILE_SIZE * 0.7,
+        m = this.add.circle(pos.px, pos.py, TILE_SIZE * 0.38,
           isSelf ? COLOR_SELF : COLOR_OTHER).setDepth(3);
         this.playerMarkers.set(p.sess_id, m);
-        if (isSelf) this.cameras.main.startFollow(m, true, 0.2, 0.2);
+        if (isSelf) {
+          this.cameras.main.startFollow(m, true, 0.2, 0.2);
+          const h1 = this.add.circle(pos.px, pos.py, TILE_SIZE * 0.14, COLOR_SELF).setDepth(4);
+          const h2 = this.add.circle(pos.px, pos.py, TILE_SIZE * 0.14, COLOR_SELF).setDepth(4);
+          this.handMarkers.set(p.sess_id, [h1, h2]);
+        }
       }
       m.setPosition(pos.px, pos.py);
+
+      const hands = this.handMarkers.get(p.sess_id);
+      if (hands) {
+        const pointer = this.input.mousePointer;
+        const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+        const angle = Math.atan2(world.y - pos.py, world.x - pos.px);
+        const armR = TILE_SIZE * 0.58;
+        const spread = Math.PI / 5;
+        hands[0].setPosition(
+          pos.px + Math.cos(angle - spread) * armR,
+          pos.py + Math.sin(angle - spread) * armR
+        );
+        hands[1].setPosition(
+          pos.px + Math.cos(angle + spread) * armR,
+          pos.py + Math.sin(angle + spread) * armR
+        );
+      }
     }
 
     // Drop markers for players (and their campsites) no longer present.
@@ -141,6 +164,8 @@ export class GameScene extends Phaser.Scene {
       this.playerMarkers.delete(sid);
       const c = this.campMarkers.get(sid);
       if (c) { c.destroy(); this.campMarkers.delete(sid); }
+      const hs = this.handMarkers.get(sid);
+      if (hs) { hs.forEach(h => h.destroy()); this.handMarkers.delete(sid); }
     }
   }
 
@@ -153,6 +178,7 @@ export class GameScene extends Phaser.Scene {
       const pos = this.toPixel(it.x, it.y);
       const m = this.add.rectangle(pos.px, pos.py, TILE_SIZE * 0.45, TILE_SIZE * 0.45,
         ITEM_COLORS[it.type] ?? 0xffffff).setDepth(2);
+      m.setStrokeStyle(2, 0xffffff, 0.6);
       this.itemMarkers.push(m);
     }
   }

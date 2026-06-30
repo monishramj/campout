@@ -8,6 +8,9 @@ CLAUDE.md
 # CMake build output
 server/build
 
+# clangd index cache
+server/.cache
+
 # Python stuff
 */venv
 */__pycache__

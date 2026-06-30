@@ -22,6 +22,8 @@ struct Player
   float x, y;
   float health = MAX_HEALTH;
   float food = MAX_FOOD;
+  int joined_tick = 0;
+  int kills = 0;
   struct Campsite
   {
     float xpos, ypos;

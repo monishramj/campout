@@ -11,34 +11,67 @@ let game = null;
 let sessId = null;
 let latestState = null;
 let pollTimer = null;
+let startSession = null;
 
 window.addEventListener('DOMContentLoaded', () => {
   initHud();
   document.getElementById('btn-guest').addEventListener('click', startGuest);
-  document.getElementById('btn-login').addEventListener('click', notImplemented);
-  document.getElementById('btn-register').addEventListener('click', notImplemented);
+  document.getElementById('btn-login').addEventListener('click', startLogin);
+  document.getElementById('btn-register').addEventListener('click', startRegister);
   document.getElementById('btn-respawn').addEventListener('click', () => {
     hide('death-overlay');
-    startGuest();
+    (startSession ?? startGuest)();
   });
 });
 
-function notImplemented() {
-  setAuthMsg('Login/Register arrives in a later phase — use Play as Guest for now.');
+async function beginSession(sessIdValue) {
+  sessId = sessIdValue;
+  const mapData = await net.getMap();
+  hide('login-overlay');
+  show('hud');
+  startGame(mapData);
+  startPolling();
 }
 
 async function startGuest() {
   try {
     setAuthMsg('');
-    ({ sess_id: sessId } = await net.guest());
-    const mapData = await net.getMap();
-    hide('login-overlay');
-    show('hud');
-    startGame(mapData);
-    startPolling();
+    startSession = startGuest;
+    const { sess_id } = await net.guest();
+    await beginSession(sess_id);
   } catch (e) {
     show('login-overlay');
     setAuthMsg(`Could not reach server: ${e.message}`);
+  }
+}
+
+async function startLogin() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  if (!username || !password) { setAuthMsg('Please enter a username and password.'); return; }
+  try {
+    setAuthMsg('');
+    startSession = startLogin;
+    const { sess_id } = await net.login(username, password);
+    await beginSession(sess_id);
+  } catch (e) {
+    show('login-overlay');
+    setAuthMsg(e.message);
+  }
+}
+
+async function startRegister() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  if (!username || !password) { setAuthMsg('Please enter a username and password.'); return; }
+  try {
+    setAuthMsg('');
+    startSession = startRegister;
+    const { sess_id } = await net.register(username, password);
+    await beginSession(sess_id);
+  } catch (e) {
+    show('login-overlay');
+    setAuthMsg(e.message);
   }
 }
 
