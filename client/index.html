@@ -56,7 +56,14 @@
     <div class="panel">
       <h1>You Died</h1>
       <p class="tagline">The fire went cold.</p>
-      <button id="btn-respawn" class="primary">Play Again</button>
+      <div class="death-stats">
+        <div class="death-stat"><span class="stat-label">Days Survived</span><span id="stat-days" class="stat-value">--</span></div>
+        <div class="death-stat"><span class="stat-label">Kills</span><span id="stat-kills" class="stat-value">--</span></div>
+      </div>
+      <div class="row">
+        <button id="btn-respawn" class="primary">Play Again</button>
+        <button id="btn-lobby" class="secondary">Return to Lobby</button>
+      </div>
     </div>
   </div>
 

@@ -116,6 +116,30 @@ button:active { transform: translateY(1px); }
 
 .msg { color: var(--muted); font-size: 0.85rem; margin-top: 14px; min-height: 1em; }
 
+.death-stats {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin: 18px 0 24px;
+}
+.death-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+}
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
 /* ---------- HUD ---------- */
 #hud {
   position: fixed;

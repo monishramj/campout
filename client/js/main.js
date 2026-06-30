@@ -22,6 +22,11 @@ window.addEventListener('DOMContentLoaded', () => {
     hide('death-overlay');
     (startSession ?? startGuest)();
   });
+  document.getElementById('btn-lobby').addEventListener('click', () => {
+    hide('death-overlay');
+    show('login-overlay');
+    startSession = null;
+  });
 });
 
 async function beginSession(sessIdValue) {
@@ -125,10 +130,26 @@ function stopPolling() {
   }
 }
 
-function handleDeath() {
+async function handleDeath() {
   stopPolling();
+  document.getElementById('stat-days').textContent = '--';
+  document.getElementById('stat-kills').textContent = '--';
   hide('hud');
   show('death-overlay');
+
+  // death_updates() in Python polls C++ every 5s before writing to Postgres,
+  // so the session row may not be finalized yet — poll until is_active is false.
+  for (let i = 0; i < 6; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    try {
+      const stats = await net.getSessionStats(sessId);
+      if (!stats.is_active) {
+        document.getElementById('stat-days').textContent = stats.days_survived;
+        document.getElementById('stat-kills').textContent = stats.kills;
+        break;
+      }
+    } catch (_) {}
+  }
 }
 
 // --- tiny DOM helpers ---

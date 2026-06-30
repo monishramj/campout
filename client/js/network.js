@@ -56,6 +56,12 @@ export async function sendAction(sessId, action) {
   return post({ type: 'action', sess_id: sessId, action });
 }
 
+export async function getSessionStats(sessId) {
+  const res = await fetch(`/session/${sessId}/stats`);
+  if (!res.ok) throw new Error(`stats failed: ${res.status}`);
+  return res.json(); // { days_survived, kills, is_active }
+}
+
 async function post(body) {
   // Fire-and-forget: gateway returns immediately, C++ applies next tick.
   await fetch(ENDPOINTS.input, {

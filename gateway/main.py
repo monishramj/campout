@@ -60,6 +60,22 @@ async def state():
     return await socket_client.request({"type": "get_state"})
 
 
+@app.get("/session/{s_id}/stats")
+async def session_stats(s_id: int):
+    async with db.engine.begin() as conn:
+        result = await conn.execute(
+            text(
+                """
+                SELECT days_survived, kills FROM sessions WHERE id = :s_id
+            """
+            ).bindparams(s_id=s_id)
+        )
+        session = result.fetchone()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return dict(session)
+
+
 # here for degugging purposes, can be removed later ig
 @app.get("/deaths")
 async def deaths():
@@ -89,9 +105,7 @@ async def register(item: UserInfoItem):
                 text("""
                     INSERT INTO players (username, password_hash)
                     VALUES (:username, :password) RETURNING id
-                """).bindparams(
-                    username=username, password=password.decode("utf-8")
-                )
+                """).bindparams(username=username, password=password.decode("utf-8"))
             )
             s_id = await conn.execute(
                 text(
@@ -106,9 +120,7 @@ async def register(item: UserInfoItem):
             await socket_client.send({"type": "add_player", "sess_id": s_id})
             return {"sess_id": s_id}
     except exc.IntegrityError:
-        raise HTTPException(
-            status_code=400, detail="Username already exists"
-        )
+        raise HTTPException(status_code=400, detail="Username already exists")
 
 
 @app.post("/login")
@@ -126,9 +138,7 @@ async def login(item: UserInfoItem):
         if not player or not bcrypt.checkpw(
             password, player.password_hash.encode("utf-8")
         ):
-            raise HTTPException(
-                status_code=401, detail="Invalid username or password"
-            )
+            raise HTTPException(status_code=401, detail="Invalid username or password")
 
         p_id = player.id
         s_id = await conn.execute(
