@@ -14,3 +14,6 @@ server/.cache
 # Python stuff
 */venv
 */__pycache__
+
+# Mac stuff
+.DS_Store

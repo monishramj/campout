@@ -11,7 +11,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import exc, text
 
+# migrate constants to its own file later
 CLIENT_DIR = os.path.join(os.path.dirname(__file__), "..", "client")
+
+ALLOWED_INPUT_TYPES = {"move_player", "action"}
 
 
 class UserInfoItem(BaseModel):
@@ -21,7 +24,6 @@ class UserInfoItem(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
     await socket_client.connect()
     asyncio.create_task(death_updates())
     yield
@@ -45,7 +47,7 @@ async def guest():
         s_id = await conn.execute(
             text(
                 """
-                INSERT INTO sessions (player_id) VALUES (:p_id) RETURNING id
+                INSERT INTO sessions (player_id) VALUES (:p_id) RETURNING token_id
             """
             ).bindparams(p_id=p_id.scalar())
         )
@@ -60,15 +62,16 @@ async def state():
     return await socket_client.request({"type": "get_state"})
 
 
-@app.get("/session/{s_id}/stats")
-async def session_stats(s_id: int):
+# token_id matches with token_id in get call above
+@app.get("/session/{token_id}/stats")
+async def session_stats(token_id: str):
     async with db.engine.begin() as conn:
         result = await conn.execute(
             text(
                 """
-                SELECT days_survived, kills FROM sessions WHERE id = :s_id
+                SELECT days_survived, kills FROM sessions WHERE token_id = :token_id
             """
-            ).bindparams(s_id=s_id)
+            ).bindparams(token_id=token_id)
         )
         session = result.fetchone()
         if not session:
@@ -89,6 +92,13 @@ async def game_map():
 
 @app.post("/input")
 async def input(body: dict):
+    # check whether the body has the required sess_id
+    if "type" not in body or body["type"] not in ALLOWED_INPUT_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid input type")
+
+    if "sess_id" not in body or not isinstance(body["sess_id"], str):
+        raise HTTPException(status_code=400, detail="Missing sess_id in request body")
+
     await socket_client.send(body)
     return {"inputted": True}
 
@@ -111,7 +121,7 @@ async def register(item: UserInfoItem):
                 text(
                     """
                     INSERT INTO sessions (player_id)
-                    VALUES (:p_id) RETURNING id
+                    VALUES (:p_id) RETURNING token_id
                 """
                 ).bindparams(p_id=p_id.scalar())
             )
@@ -144,7 +154,7 @@ async def login(item: UserInfoItem):
         s_id = await conn.execute(
             text(
                 """
-                INSERT INTO sessions (player_id) VALUES (:p_id) RETURNING id
+                INSERT INTO sessions (player_id) VALUES (:p_id) RETURNING token_id
             """
             ).bindparams(p_id=p_id)
         )
@@ -182,7 +192,7 @@ async def death_updates():
                                     days_survived = :days_survived,
                                     kills = :kills,
                                     ended_at = now()
-                                WHERE id = :session_id
+                                WHERE token_id= :session_id
                             """
                         ).bindparams(
                             session_id=death["sess_id"],
