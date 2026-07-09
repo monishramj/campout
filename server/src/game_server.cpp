@@ -444,5 +444,9 @@ void start() {
     if (duration < std::chrono::milliseconds(TICK_RATE))
       std::this_thread::sleep_for(std::chrono::milliseconds(TICK_RATE) -
                                   duration);
+
+    if (duration > std::chrono::milliseconds(TICK_RATE)) {
+      std::cerr << duration.count() << " tick-overrun @ " << tick_count << "\n";
+    }
   }
 }
