@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
@@ -16,8 +17,13 @@
 struct InputMsg {
   std::string sess_id;
   std::string type;
-  std::string json;
+  nlohmann::json j;
   int client_fd;
+};
+
+struct InputPayload {
+  int client_fd;
+  std::string payload;
 };
 
 struct DeathEvent {
@@ -29,6 +35,10 @@ struct DeathEvent {
 static std::queue<InputMsg> input_q;
 static std::queue<DeathEvent> death_q;
 static std::mutex mutex_q;
+
+static std::queue<InputPayload> payload_q;
+static std::mutex mutex_pl;
+static std::condition_variable cv_pl;
 
 std::unordered_map<std::string, Player> players{};
 int tick_count = 0;
@@ -50,6 +60,35 @@ static bool write_all(int fd, const std::string &data) {
     total += write_len;
   }
   return true;
+}
+
+static void enqueue_write(InputPayload msg) {
+  mutex_pl.lock();
+  payload_q.push(msg);
+  mutex_pl.unlock();
+  cv_pl.notify_one();
+}
+
+static void handle_writes_func() {
+  while (true) {
+    std::unique_lock<std::mutex> lk(mutex_pl);
+    cv_pl.wait(lk, [] {
+      return !payload_q.empty();
+    }); // waits until a queue to write was notified
+
+    std::vector<InputPayload> payload_v;
+
+    // read payload q
+    while (!payload_q.empty()) {
+      payload_v.push_back(std::move(payload_q.front()));
+      payload_q.pop();
+    }
+    lk.unlock();
+
+    for (InputPayload &msg : payload_v) {
+      write_all(msg.client_fd, msg.payload);
+    }
+  }
 }
 
 static void handle_connections(int client_fd) {
@@ -80,9 +119,8 @@ static void handle_connections(int client_fd) {
 
       try {
         nlohmann::json j = nlohmann::json::parse(line);
-        InputMsg msg = {j.value("sess_id", ""), j["type"], line, client_fd};
         std::lock_guard<std::mutex> lock(mutex_q);
-        input_q.push(msg);
+        input_q.push({j.value("sess_id", ""), j["type"], j, client_fd});
       } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';
       }
@@ -171,11 +209,10 @@ void move_player(std::string sess_id, InputType dir) {
   }
 }
 
-void handle_player_action(std::string sess_id, std::string action_json) {
+void handle_player_action(std::string sess_id, nlohmann::json &j) {
   if (players.find(sess_id) == players.end())
     return;
   Player &player = players[sess_id];
-  nlohmann::json j = nlohmann::json::parse(action_json);
   std::string action = j["action"];
 
   if (action == "CONSUME") {
@@ -286,11 +323,8 @@ void tick() {
   mutex_q.unlock();
 
   // input q - player add/remove, mvm, actions
-  while (!input_v.empty()) {
-    InputMsg msg = input_v.back();
-    input_v.pop_back();
+  for (InputMsg &msg : input_v) {
 
-    nlohmann::json j = nlohmann::json::parse(msg.json);
     if (msg.type == "add_player") {
       Player p{};
       p.sess_id = msg.sess_id;
@@ -302,18 +336,18 @@ void tick() {
       // so they will have to start from day 1
       remove_player(msg.sess_id);
     } else if (msg.type == "move_player") {
-      move_player(msg.sess_id, j["dir"].get<InputType>());
+      move_player(msg.sess_id, msg.j["dir"].get<InputType>());
     } else if (msg.type == "action") {
-      handle_player_action(msg.sess_id, msg.json);
+      handle_player_action(msg.sess_id, msg.j);
     } else if (msg.type == "get_state") {
       std::string state = get_state() + "\n";
-      write_all(msg.client_fd, state);
+      enqueue_write({msg.client_fd, state});
     } else if (msg.type == "get_map") {
       std::string m = get_map() + "\n";
-      write_all(msg.client_fd, m);
+      enqueue_write({msg.client_fd, m});
     } else if (msg.type == "get_deaths") {
       std::string deaths = _get_deaths() + "\n";
-      write_all(msg.client_fd, deaths);
+      enqueue_write({msg.client_fd, deaths});
     } else {
       std::cerr << "Unknown message type: " << msg.type << std::endl;
     }
@@ -395,6 +429,7 @@ void start() {
 
   // spawn thread
   std::thread(socket_thread_func).detach();
+  std::thread(handle_writes_func).detach();
 
   // game loop
   while (1) {
