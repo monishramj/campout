@@ -1,27 +1,26 @@
 #include "game_server.h"
-#include <queue>
-#include <mutex>
-#include <sys/un.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <thread>
+#include <algorithm>
+#include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <ctime>
-#include <chrono>
-#include <algorithm>
-#include <nlohmann/json.hpp>
 #include <iostream>
+#include <mutex>
+#include <nlohmann/json.hpp>
+#include <queue>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <thread>
+#include <unistd.h>
 
-struct InputMsg
-{
+struct InputMsg {
   std::string sess_id;
   std::string type;
   std::string json;
   int client_fd;
 };
 
-struct DeathEvent
-{
+struct DeathEvent {
   std::string sess_id;
   int kills;
   int days_survived;
@@ -35,41 +34,70 @@ std::unordered_map<std::string, Player> players{};
 int tick_count = 0;
 int server_fd = -1;
 
-static void handle_connections(int client_fd)
-{
+static bool write_all(int fd, const std::string &data) {
+  size_t total = 0;
+  while (total < data.size()) {
+    ssize_t write_len = write(fd, data.data() + total, data.size() - total);
+    if (write_len == -1) {
+      if (errno == EINTR) { // retry
+        continue;
+      } else {
+        std::cerr << "Write returned -1, no EINTR: " << errno << '\n';
+        return false;
+      }
+    }
+
+    total += write_len;
+  }
+  return true;
+}
+
+static void handle_connections(int client_fd) {
   std::string buf;
   char tmp_buf[4096]{};
-  int read_len = 0;
-  do
-  {
+  ssize_t read_len = 0;
+  do {
     read_len = read(client_fd, tmp_buf, sizeof(tmp_buf));
+    if (read_len == 0) { // if EOF
+      close(client_fd);
+      return;
+    } else if (read_len == -1) {
+      if (errno == EINTR) { // retry
+        continue;
+      } else {
+        std::cerr << "Read returned -1, no EINTR: " << errno << '\n';
+        close(client_fd);
+        return;
+      }
+    }
+
     buf.append(tmp_buf, read_len);
     size_t pos = buf.find("\n");
-    while (pos != std::string::npos)
-    {
+    while (pos != std::string::npos) {
       std::string line = buf.substr(0, pos);
       buf.erase(0, pos + 1);
       pos = buf.find("\n");
 
-      try
-      {
+      try {
         nlohmann::json j = nlohmann::json::parse(line);
         InputMsg msg = {j.value("sess_id", ""), j["type"], line, client_fd};
         std::lock_guard<std::mutex> lock(mutex_q);
         input_q.push(msg);
-      }
-      catch (const std::exception &e)
-      {
+      } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';
       }
+    }
+    if (buf.size() > MAX_LINE_LEN) {
+      std::cerr << "Buffer size overloaded" << '\n';
+      close(client_fd);
+      return;
     }
   } while (read_len > 0);
 
   close(client_fd);
 }
 
-static void socket_thread_func()
-{
+static void socket_thread_func() {
   const char *s_path = "/tmp/campout.sock";
 
   // socket
@@ -92,15 +120,13 @@ static void socket_thread_func()
   listen(server_fd, 3);
 
   // accept
-  while (true)
-  {
+  while (true) {
     int client_fd = accept(server_fd, nullptr, nullptr);
     std::thread(handle_connections, client_fd).detach();
   }
 }
 
-void add_player(Player player)
-{
+void add_player(Player player) {
   player.x = SPAWN_X;
   player.y = SPAWN_Y;
   player.campsite.xpos = SPAWN_X;
@@ -110,21 +136,16 @@ void add_player(Player player)
   players[player.sess_id] = player;
 }
 
-void remove_player(std::string sess_id)
-{
-  players.erase(sess_id);
-}
+void remove_player(std::string sess_id) { players.erase(sess_id); }
 
-void move_player(std::string sess_id, InputType dir)
-{
+void move_player(std::string sess_id, InputType dir) {
   if (players.find(sess_id) == players.end())
     return;
   Player &player = players[sess_id];
   float new_x = player.x;
   float new_y = player.y;
 
-  switch (dir)
-  {
+  switch (dir) {
   case MOVE_LEFT:
     new_x -= PLAYER_SPEED;
     break;
@@ -141,8 +162,7 @@ void move_player(std::string sess_id, InputType dir)
     break;
   }
 
-  if (new_x >= 0 && new_x < MAP_WIDTH && new_y >= 0 && new_y < MAP_HEIGHT)
-  {
+  if (new_x >= 0 && new_x < MAP_WIDTH && new_y >= 0 && new_y < MAP_HEIGHT) {
     if (map[(int)new_x][(int)new_y] < WALL) // make explicit function check
     {
       player.x = new_x;
@@ -151,44 +171,35 @@ void move_player(std::string sess_id, InputType dir)
   }
 }
 
-void handle_player_action(std::string sess_id, std::string action_json)
-{
+void handle_player_action(std::string sess_id, std::string action_json) {
   if (players.find(sess_id) == players.end())
     return;
   Player &player = players[sess_id];
   nlohmann::json j = nlohmann::json::parse(action_json);
   std::string action = j["action"];
 
-  if (action == "CONSUME")
-  {
-    for (size_t i = 0; i < player.inven.size(); i++)
-    {
+  if (action == "CONSUME") {
+    for (size_t i = 0; i < player.inven.size(); i++) {
       InventoryItem &item = player.inven[i];
-      if (item.type == FOOD && item.amt > 0)
-      {
-        player.food =
-            ((player.food + FOOD_RESTORE) <= MAX_FOOD) ? (player.food + FOOD_RESTORE)
-                                                       : MAX_FOOD;
-        if (--item.amt <= 0)
-        {
+      if (item.type == FOOD && item.amt > 0) {
+        player.food = ((player.food + FOOD_RESTORE) <= MAX_FOOD)
+                          ? (player.food + FOOD_RESTORE)
+                          : MAX_FOOD;
+        if (--item.amt <= 0) {
           player.inven.erase(player.inven.begin() + i);
         }
         break;
       }
     }
-  }
-  else if (action == "USE_FUEL")
-  {
-    for (size_t i = 0; i < player.inven.size(); i++)
-    {
+  } else if (action == "USE_FUEL") {
+    for (size_t i = 0; i < player.inven.size(); i++) {
       InventoryItem &item = player.inven[i];
-      if (item.type == FUEL && item.amt > 0)
-      {
+      if (item.type == FUEL && item.amt > 0) {
         player.campsite.fuel =
-            ((player.campsite.fuel + FUEL_RESTORE) <= MAX_FUEL) ? (player.campsite.fuel + FUEL_RESTORE)
-                                                                : MAX_FUEL;
-        if (--item.amt <= 0)
-        {
+            ((player.campsite.fuel + FUEL_RESTORE) <= MAX_FUEL)
+                ? (player.campsite.fuel + FUEL_RESTORE)
+                : MAX_FUEL;
+        if (--item.amt <= 0) {
           player.inven.erase(player.inven.begin() + i);
         }
         break;
@@ -197,20 +208,17 @@ void handle_player_action(std::string sess_id, std::string action_json)
   }
 }
 
-std::string get_state()
-{
+std::string get_state() {
   nlohmann::json j;
   j["tick"] = tick_count;
 
   j["players"] = nlohmann::json::array();
 
-  for (auto &[sess_id, player] : players)
-  {
+  for (auto &[sess_id, player] : players) {
     nlohmann::json inv = nlohmann::json::array();
     for (auto &item : player.inven)
-      inv.push_back({{"type", item.type},
-                     {"subtype", item.subtype},
-                     {"amt", item.amt}});
+      inv.push_back(
+          {{"type", item.type}, {"subtype", item.subtype}, {"amt", item.amt}});
 
     j["players"].push_back({{"sess_id", player.sess_id},
                             {"name", player.name},
@@ -225,8 +233,7 @@ std::string get_state()
   }
 
   j["items"] = nlohmann::json::array();
-  for (auto &item : items)
-  {
+  for (auto &item : items) {
     if (!item.active)
       continue;
     j["items"].push_back({{"type", item.type},
@@ -238,14 +245,12 @@ std::string get_state()
   return j.dump();
 }
 
-std::string get_map()
-{
+std::string get_map() {
   nlohmann::json j;
   j["width"] = MAP_WIDTH;
   j["height"] = MAP_HEIGHT;
   j["tiles"] = nlohmann::json::array();
-  for (int x = 0; x < MAP_WIDTH; x++)
-  {
+  for (int x = 0; x < MAP_WIDTH; x++) {
     nlohmann::json col = nlohmann::json::array();
     for (int y = 0; y < MAP_HEIGHT; y++)
       col.push_back((int)map[x][y]);
@@ -254,126 +259,102 @@ std::string get_map()
   return j.dump();
 }
 
-std::string _get_deaths()
-{
-    nlohmann::json j;
-    j["deaths"] = nlohmann::json::array();
-    while (!death_q.empty())
-    {
-        DeathEvent event = death_q.front();
-        death_q.pop();
-        j["deaths"].push_back({{"sess_id", event.sess_id},
-                             {"kills", event.kills},
-                             {"days_survived", event.days_survived}});
-    }
-    return j.dump();
+std::string _get_deaths() {
+  nlohmann::json j;
+  j["deaths"] = nlohmann::json::array();
+  while (!death_q.empty()) {
+    DeathEvent event = death_q.front();
+    death_q.pop();
+    j["deaths"].push_back({{"sess_id", event.sess_id},
+                           {"kills", event.kills},
+                           {"days_survived", event.days_survived}});
+  }
+  return j.dump();
 }
 
-void tick()
-{
+void tick() {
   tick_count++;
 
   std::vector<InputMsg> input_v;
 
   // read input q
   mutex_q.lock();
-  while (!input_q.empty())
-  {
+  while (!input_q.empty()) {
     input_v.push_back(std::move(input_q.front()));
     input_q.pop();
   }
   mutex_q.unlock();
 
   // input q - player add/remove, mvm, actions
-  while (!input_v.empty())
-  {
+  while (!input_v.empty()) {
     InputMsg msg = input_v.back();
     input_v.pop_back();
 
     nlohmann::json j = nlohmann::json::parse(msg.json);
-    if (msg.type == "add_player")
-    {
+    if (msg.type == "add_player") {
       Player p{};
       p.sess_id = msg.sess_id;
       add_player(p);
-    }
-    else if (msg.type == "remove_player")
-    {
-      // phase 3: mark sessions inactive, meaning equivalent to death so a session stops then
-      // make sure that way the days survived is counted accurately
-      // if player leaves they must restart the game to play again, so they will have to start from day 1
+    } else if (msg.type == "remove_player") {
+      // phase 3: mark sessions inactive, meaning equivalent to death so a
+      // session stops then make sure that way the days survived is counted
+      // accurately if player leaves they must restart the game to play again,
+      // so they will have to start from day 1
       remove_player(msg.sess_id);
-    }
-    else if (msg.type == "move_player")
-    {
+    } else if (msg.type == "move_player") {
       move_player(msg.sess_id, j["dir"].get<InputType>());
-    }
-    else if (msg.type == "action")
-    {
+    } else if (msg.type == "action") {
       handle_player_action(msg.sess_id, msg.json);
-    }
-    else if (msg.type == "get_state")
-    {
+    } else if (msg.type == "get_state") {
       std::string state = get_state() + "\n";
-      write(msg.client_fd, state.c_str(), state.size());
-    }
-    else if (msg.type == "get_map")
-    {
+      write_all(msg.client_fd, state);
+    } else if (msg.type == "get_map") {
       std::string m = get_map() + "\n";
-      write(msg.client_fd, m.c_str(), m.size());
-    }
-    else if (msg.type == "get_deaths")
-    {
-        std::string deaths = _get_deaths() + "\n";
-        write(msg.client_fd, deaths.c_str(), deaths.size());
-    }
-    else {
-        std::cerr << "Unknown message type: " << msg.type << std::endl;
+      write_all(msg.client_fd, m);
+    } else if (msg.type == "get_deaths") {
+      std::string deaths = _get_deaths() + "\n";
+      write_all(msg.client_fd, deaths);
+    } else {
+      std::cerr << "Unknown message type: " << msg.type << std::endl;
     }
     // TODO: add health checks for combat
   }
 
-  // currently looping thru everything: naive approach, can be fixed later if player map size increases
+  // currently looping thru everything: naive approach, can be fixed later if
+  // player map size increases
   std::vector<std::string> dead_players{};
-  for (auto &[sess_id, player] : players)
-  {
+  for (auto &[sess_id, player] : players) {
     // all rates
-    if (player.campsite.fuel > 0)
-    {
+    if (player.campsite.fuel > 0) {
       player.campsite.fuel -= CAMPFIRE_RATE;
       if (player.campsite.fuel < 0)
         player.campsite.fuel = 0;
     }
 
-    if (player.food <= 0)
-    {
+    if (player.food <= 0) {
       player.health -= HEALTH_DRAIN_RATE;
-    }
-    else
-    {
+    } else {
       player.food -= FOOD_DRAIN_RATE;
       if (player.food < 0)
         player.food = 0;
     }
 
-    if (player.health <= 0)
-    {
+    if (player.health <= 0) {
       dead_players.push_back(player.sess_id);
       continue;
     }
 
     // item pickups
-    for (int i = 0; i < MAX_ITEMS; i++)
-    {
+    for (int i = 0; i < MAX_ITEMS; i++) {
       if (!items[i].active)
         continue;
       if ((abs(player.x - items[i].x) < PICKUP_RADIUS) &&
-          (abs(player.y - items[i].y) < PICKUP_RADIUS))
-      {
+          (abs(player.y - items[i].y) < PICKUP_RADIUS)) {
         auto it = std::find_if(player.inven.begin(), player.inven.end(),
-                               [&](const InventoryItem &inv)
-                               { return inv.type == items[i].type &&
-                                        inv.subtype == items[i].subtype; });
+                               [&](const InventoryItem &inv) {
+                                 return inv.type == items[i].type &&
+                                        inv.subtype == items[i].subtype;
+                               });
         if (it != player.inven.end())
           it->amt++;
         else
@@ -383,33 +364,26 @@ void tick()
     }
   }
 
-  for (std::string sess_id : dead_players)
-  {
-      int days_survived = (tick_count - players[sess_id].joined_tick) / DAY_LENGTH;
-      DeathEvent event = {sess_id,  players[sess_id].kills, days_survived};
-      death_q.push(event);
-      remove_player(sess_id);
+  for (std::string sess_id : dead_players) {
+    int days_survived =
+        (tick_count - players[sess_id].joined_tick) / DAY_LENGTH;
+    DeathEvent event = {sess_id, players[sess_id].kills, days_survived};
+    death_q.push(event);
+    remove_player(sess_id);
   }
 }
 
-void start()
-{
+void start() {
   srand(time(nullptr));
 
   // set up items across map
   int items_idx = 0;
   int drop_chance = 40;
-  for (int x = 0; x < MAP_WIDTH; x++)
-  {
-    for (int y = 0; y < MAP_HEIGHT; y++)
-    {
+  for (int x = 0; x < MAP_WIDTH; x++) {
+    for (int y = 0; y < MAP_HEIGHT; y++) {
       TileType tile = map[x][y];
-      if (tile == HOUSE_FLOOR && (rand() % 100) < drop_chance)
-      {
-        WorldItem item = {
-            (ItemType)(rand() % 3),
-            "",
-            (float)x, (float)y, true};
+      if (tile == HOUSE_FLOOR && (rand() % 100) < drop_chance) {
+        WorldItem item = {(ItemType)(rand() % 3), "", (float)x, (float)y, true};
         if (items_idx >= MAX_ITEMS)
           break;
         items[items_idx++] = item;
@@ -423,16 +397,17 @@ void start()
   std::thread(socket_thread_func).detach();
 
   // game loop
-  while (1)
-  {
+  while (1) {
     auto start = std::chrono::steady_clock::now();
 
     tick();
 
     auto end = std::chrono::steady_clock::now();
-    auto duration = (std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
+    auto duration =
+        (std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
 
     if (duration < std::chrono::milliseconds(TICK_RATE))
-      std::this_thread::sleep_for(std::chrono::milliseconds(TICK_RATE) - duration);
+      std::this_thread::sleep_for(std::chrono::milliseconds(TICK_RATE) -
+                                  duration);
   }
 }
