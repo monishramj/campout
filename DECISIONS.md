@@ -15,3 +15,7 @@
   - this does mean when reconnected, any writes queued will be immediately
     pushed, causing a lag spike.
     - this will be fixed soon with websockets
+
+- PROTOCOL done: multiplexing is one connection with types for each msg, and an
+  req_id (the sess_id), response echoes it. both are needed for single
+  connection. moving away from two connections.

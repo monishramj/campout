@@ -58,13 +58,15 @@ def upgrade() -> None:
         sa.Column("display_name", sa.Text(), nullable=False),
         sa.Column("properties", postgresql.JSONB(), server_default="{}"),
     )
+
+    # changed only here, need to upgrade these in the actual table, i believe
     op.execute("""
     INSERT INTO item_definitions (item_type, display_name, properties) VALUES
-    ('FUEL',  'Fuel',         '{"restore": 25}'),
+    ('FUEL',  'Fuel',         '{"restore": 30}'),
     ('MELEE', 'Melee Weapon', '{"damage": 10, "range": 1.5}'),
-    ('FOOD',  'Food',         '{"restore": 50}')
+    ('FOOD',  'Food',         '{"restore": 25}')
   """)
-
+    
     op.create_table(
         "campsites",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),

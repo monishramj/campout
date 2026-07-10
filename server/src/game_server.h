@@ -30,7 +30,7 @@ void tick();
 void add_player(Player player);
 void remove_player(std::string sess_id);
 void move_player(std::string sess_id, InputType dir);
-void handle_player_action(std::string sess_id, std::string action_json);
+void handle_player_action(std::string sess_id, nlohmann::json &j);
 static bool write_all(int fd, const std::string &data);
 std::string get_state();
 std::string get_map();

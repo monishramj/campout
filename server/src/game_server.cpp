@@ -30,6 +30,7 @@ struct DeathEvent {
   std::string sess_id;
   int kills;
   int days_survived;
+  // add status of deathevent here
 };
 
 static std::queue<InputMsg> input_q;
@@ -136,19 +137,24 @@ static void handle_connections(int client_fd) {
 }
 
 static void socket_thread_func() {
-  const char *s_path = "/tmp/campout.sock";
+  std::string s_path = "/tmp/campout.sock";
 
   // socket
   sockaddr_un addr{};
   addr.sun_family = AF_UNIX;
-  memcpy(addr.sun_path, s_path, sizeof(addr.sun_path));
+  if (s_path.size() < sizeof(addr.sun_path) - 1) {
+    memcpy(addr.sun_path, s_path.c_str(), s_path.size() + 1);
+  } else {
+    std::cerr << "Socket path too long for sun_path: " << s_path << '\n';
+    exit(EXIT_FAILURE);
+  }
 
   server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (server_fd < 0)
     return;
 
   // unlink
-  unlink(s_path);
+  unlink(s_path.c_str());
 
   // bind
   if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
