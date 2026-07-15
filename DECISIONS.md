@@ -19,3 +19,10 @@
 - PROTOCOL done: multiplexing is one connection with types for each msg, and an
   req_id (the sess_id), response echoes it. both are needed for single
   connection. moving away from two connections.
+
+- fixed timestep, now simulates missed timesteps and caps
+  - issue is that i beleive the day system might be a little cooked but i think
+    we fix that later, as ticks might not be the best way to count day length.
+
+- !ISSUE!! : tick rate based day system is variable and not right, make it
+  server side on a set itmer so tick lag doens't increase day itme length

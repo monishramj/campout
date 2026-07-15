@@ -57,10 +57,14 @@ async def guest():
     return {"sess_id": s_id}
 
 
-@app.get("/state")
-async def state():
-    return await socket_client.request({"type": "get_state"})
+# @app.get("/state")
+# async def state():
+#     return await socket_client.request({"type": "get_state"})
 
+# manual payload if need be
+@app.get("/snapshot")
+async def state():
+    return await socket_client.request({"type": "snapshot"})
 
 # token_id matches with token_id in get call above
 @app.get("/session/{token_id}/stats")

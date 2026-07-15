@@ -1,5 +1,6 @@
 #include "game_server.h"
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
@@ -7,7 +8,6 @@
 #include <ctime>
 #include <iostream>
 #include <mutex>
-#include <nlohmann/json.hpp>
 #include <queue>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -44,6 +44,7 @@ static std::condition_variable cv_pl;
 std::unordered_map<std::string, Player> players{};
 int tick_count = 0;
 int server_fd = -1;
+std::atomic<int> gateway_fd{-1};
 
 static bool write_all(int fd, const std::string &data) {
   size_t total = 0;
@@ -68,6 +69,20 @@ static void enqueue_write(InputPayload msg) {
   payload_q.push(msg);
   mutex_pl.unlock();
   cv_pl.notify_one();
+}
+
+static void push_snapshot(int fd, const std::string &data) {
+  ssize_t n = send(fd, data.data(), data.size(), MSG_DONTWAIT);
+  if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+    std::cerr << "Snapshot push returned -1, buffer full: " << errno << '\n';
+  } else if (n == -1) { // connection dead
+    std::cerr << "Snapshot push returned -1, connection dead: " << errno
+              << '\n';
+    gateway_fd = -1;
+  } else if (n >= 0 && n < data.size()) {
+    std::cerr << "Partial write, discard, sent " << n << " of " << data.size()
+              << " bytes\n";
+  }
 }
 
 static void handle_writes_func() {
@@ -166,6 +181,7 @@ static void socket_thread_func() {
   // accept
   while (true) {
     int client_fd = accept(server_fd, nullptr, nullptr);
+    gateway_fd = client_fd;
     std::thread(handle_connections, client_fd).detach();
   }
 }
@@ -251,8 +267,9 @@ void handle_player_action(std::string sess_id, nlohmann::json &j) {
   }
 }
 
-std::string get_state() {
+std::string get_snapshot() {
   nlohmann::json j;
+  j["type"] = "snapshot";
   j["tick"] = tick_count;
 
   j["players"] = nlohmann::json::array();
@@ -284,6 +301,10 @@ std::string get_state() {
                           {"x", item.x},
                           {"y", item.y}});
   }
+
+  j["world_id"] = 0;
+
+  j["entities"] = nlohmann::json::array();
 
   return j.dump();
 }
@@ -345,9 +366,9 @@ void tick() {
       move_player(msg.sess_id, msg.j["dir"].get<InputType>());
     } else if (msg.type == "action") {
       handle_player_action(msg.sess_id, msg.j);
-    } else if (msg.type == "get_state") {
-      std::string state = get_state() + "\n";
-      enqueue_write({msg.client_fd, state});
+      // } else if (msg.type == "snapshot") {
+      //   std::string state = get_snapshot() + "\n";
+      //   enqueue_write({msg.client_fd, state});
     } else if (msg.type == "get_map") {
       std::string m = get_map() + "\n";
       enqueue_write({msg.client_fd, m});
@@ -411,6 +432,10 @@ void tick() {
     death_q.push(event);
     remove_player(sess_id);
   }
+
+  if (gateway_fd.load() != -1) {
+    push_snapshot(gateway_fd.load(), get_snapshot() + "\n");
+  }
 }
 
 void start() {
@@ -437,22 +462,38 @@ void start() {
   std::thread(socket_thread_func).detach();
   std::thread(handle_writes_func).detach();
 
+  // https://gafferongames.com/post/fix_your_timestep/
+  auto prev = std::chrono::steady_clock::now();
+  double owed_time = 0;
+
   // game loop
   while (1) {
     auto start = std::chrono::steady_clock::now();
+    double frame_time =
+        (std::chrono::duration<double, std::milli>(start - prev)).count();
+    prev = start;
 
-    tick();
-
-    auto end = std::chrono::steady_clock::now();
-    auto duration =
-        (std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
-
-    if (duration < std::chrono::milliseconds(TICK_RATE))
-      std::this_thread::sleep_for(std::chrono::milliseconds(TICK_RATE) -
-                                  duration);
-
-    if (duration > std::chrono::milliseconds(TICK_RATE)) {
-      std::cerr << duration.count() << " tick-overrun @ " << tick_count << "\n";
+    if (frame_time > TICK_RATE * MAX_FRAME_TIME_MULTIPLIER) {
+      frame_time = TICK_RATE * MAX_FRAME_TIME_MULTIPLIER;
+      std::cerr << frame_time << " tick-overrun (setting back) @ " << tick_count
+                << "\n";
     }
+
+    owed_time += frame_time;
+
+    if (owed_time > MAX_OWED_TICKS * TICK_RATE) {
+      std::cerr << "tick overload: dropping " << owed_time
+                << "ms of backlog @ tick " << tick_count << "\n";
+      owed_time = TICK_RATE;
+      std::cerr << frame_time << " owed-time overrun (setting back) @ "
+                << tick_count << "\n";
+    }
+
+    while (owed_time >= TICK_RATE) {
+      tick();
+      owed_time -= TICK_RATE;
+    }
+    std::this_thread::sleep_for(
+        std::chrono::duration<double, std::milli>(owed_time));
   }
 }

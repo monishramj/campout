@@ -4,10 +4,13 @@
 #include "map.h"
 #include "player.h"
 #include "types.h"
+#include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
 
 constexpr int TICK_RATE = 50;
+constexpr int MAX_FRAME_TIME_MULTIPLIER = 5;
+constexpr int MAX_OWED_TICKS = 15;
 constexpr float CAMPFIRE_RATE = .083f;
 constexpr int DAY_LENGTH = 7200;
 constexpr size_t MAX_LINE_LEN = 8192;
@@ -32,7 +35,8 @@ void remove_player(std::string sess_id);
 void move_player(std::string sess_id, InputType dir);
 void handle_player_action(std::string sess_id, nlohmann::json &j);
 static bool write_all(int fd, const std::string &data);
-std::string get_state();
+// std::string get_state();
+std::string get_snapshot();
 std::string get_map();
 
 #endif
