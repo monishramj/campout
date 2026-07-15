@@ -6,7 +6,7 @@
 
 ## Version
 
-v1.0
+v1.1
 
 basic version numbering: v.x.y (e.g. v.1.0)
 
@@ -46,6 +46,9 @@ json body
   - player
     - currently we spawn in a new player but eventually we will need the
       player's information for stuff that stays between sessions
+  - request/response: rejected if the world is at MAX_PLAYERS (50) AND
+    sess_id is not already present (a reconnect for an existing sess_id
+    always succeeds -- it isn't a new slot). See response below.
 
 - remove_player
   - req_id
@@ -92,9 +95,16 @@ snapshot sent out every tick to gateway, no req_id:
   - phase: DAY | NIGHT
   - time_remaining (ticks)
 
-type: get_map, get_deaths, snapshot
+type: add_player, get_map, get_deaths, snapshot
 
 req_id: UUID, not based off time, unique per request, echoed in response
+
+- add_player
+  - req_id (echoed)
+  - success
+    - false only when sess_id is new and the world is at MAX_PLAYERS; the
+      gateway rejects the WebSocket connection on false, never lets it go
+      live
 
 - get_map
   - req_id (echoed)

@@ -27,14 +27,15 @@ struct InputPayload {
 };
 
 struct DeathEvent {
+  uint64_t id;
   std::string sess_id;
   int kills;
   int days_survived;
-  // add status of deathevent here
 };
 
 static std::queue<InputMsg> input_q;
-static std::queue<DeathEvent> death_q;
+static std::deque<DeathEvent> death_q;
+static uint64_t next_death_id = 1;
 static std::mutex mutex_q;
 
 static std::queue<InputPayload> payload_q;
@@ -186,7 +187,10 @@ static void socket_thread_func() {
   }
 }
 
-void add_player(Player player) {
+bool add_player(Player player) {
+  if (players.find(player.sess_id) == players.end() &&
+      (players.size() == MAX_PLAYERS))
+    return false;
   player.x = SPAWN_X;
   player.y = SPAWN_Y;
   player.campsite.xpos = SPAWN_X;
@@ -194,6 +198,7 @@ void add_player(Player player) {
   player.joined_tick = tick_count;
 
   players[player.sess_id] = player;
+  return true;
 }
 
 void remove_player(std::string sess_id) { players.erase(sess_id); }
@@ -309,8 +314,10 @@ std::string get_snapshot() {
   return j.dump();
 }
 
-std::string get_map() {
+std::string get_map(const std::string &req_id) {
   nlohmann::json j;
+  j["type"] = "get_map";
+  j["req_id"] = req_id;
   j["width"] = MAP_WIDTH;
   j["height"] = MAP_HEIGHT;
   j["tiles"] = nlohmann::json::array();
@@ -323,13 +330,14 @@ std::string get_map() {
   return j.dump();
 }
 
-std::string _get_deaths() {
+std::string _get_deaths(const std::string &req_id) {
   nlohmann::json j;
+  j["type"] = "get_deaths";
+  j["req_id"] = req_id;
   j["deaths"] = nlohmann::json::array();
-  while (!death_q.empty()) {
-    DeathEvent event = death_q.front();
-    death_q.pop();
-    j["deaths"].push_back({{"sess_id", event.sess_id},
+  for (const DeathEvent &event : death_q) {
+    j["deaths"].push_back({{"id", event.id},
+                           {"sess_id", event.sess_id},
                            {"kills", event.kills},
                            {"days_survived", event.days_survived}});
   }
@@ -355,7 +363,12 @@ void tick() {
     if (msg.type == "add_player") {
       Player p{};
       p.sess_id = msg.sess_id;
-      add_player(p);
+      bool player_added = add_player(p);
+      nlohmann::json resp;
+      resp["type"] = "add_player";
+      resp["req_id"] = msg.j.value("req_id", "");
+      resp["success"] = player_added;
+      enqueue_write({msg.client_fd, resp.dump() + "\n"});
     } else if (msg.type == "remove_player") {
       // phase 3: mark sessions inactive, meaning equivalent to death so a
       // session stops then make sure that way the days survived is counted
@@ -370,11 +383,16 @@ void tick() {
       //   std::string state = get_snapshot() + "\n";
       //   enqueue_write({msg.client_fd, state});
     } else if (msg.type == "get_map") {
-      std::string m = get_map() + "\n";
+      std::string m = get_map(msg.j.value("req_id", "")) + "\n";
       enqueue_write({msg.client_fd, m});
     } else if (msg.type == "get_deaths") {
-      std::string deaths = _get_deaths() + "\n";
+      std::string deaths = _get_deaths(msg.j.value("req_id", "")) + "\n";
       enqueue_write({msg.client_fd, deaths});
+    } else if (msg.type == "death_ack") {
+      uint64_t acked_id = msg.j.value("acked_id", (uint64_t)0);
+      while (!death_q.empty() && death_q.front().id <= acked_id) {
+        death_q.pop_front();
+      }
     } else {
       std::cerr << "Unknown message type: " << msg.type << std::endl;
     }
@@ -428,8 +446,9 @@ void tick() {
   for (std::string sess_id : dead_players) {
     int days_survived =
         (tick_count - players[sess_id].joined_tick) / DAY_LENGTH;
-    DeathEvent event = {sess_id, players[sess_id].kills, days_survived};
-    death_q.push(event);
+    DeathEvent event = {next_death_id++, sess_id, players[sess_id].kills,
+                         days_survived};
+    death_q.push_back(event);
     remove_player(sess_id);
   }
 

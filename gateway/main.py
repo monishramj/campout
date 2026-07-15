@@ -4,9 +4,10 @@ import uuid
 from contextlib import asynccontextmanager
 
 import bcrypt
+import connections
 import db
 import socket_client
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import exc, text
@@ -15,6 +16,7 @@ from sqlalchemy import exc, text
 CLIENT_DIR = os.path.join(os.path.dirname(__file__), "..", "client")
 
 ALLOWED_INPUT_TYPES = {"move_player", "action"}
+AUTH_TIMEOUT = 15.0 
 
 
 class UserInfoItem(BaseModel):
@@ -22,8 +24,20 @@ class UserInfoItem(BaseModel):
     password: str
 
 
+def broadcast_snapshot(msg: dict) -> None:
+    for conn in connections.connections.values() :
+        try:
+            conn.outbound.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+        except Exception as e:
+            print(f"broadcast_snap error: {type(e).__name__}")
+        
+        conn.outbound.put_nowait(msg)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    socket_client.set_snapshot_handler(broadcast_snapshot)
     await socket_client.connect()
     asyncio.create_task(death_updates())
     yield
@@ -168,6 +182,85 @@ async def login(item: UserInfoItem):
     return {"sess_id": s_id}
 
 
+
+async def receive_loop(ws: WebSocket, sess_id: str) -> None:
+    while True:
+        msg = await ws.receive_json()
+        if not isinstance(msg, dict) or msg.get("type") not in ALLOWED_INPUT_TYPES:
+            continue
+        msg["sess_id"] = sess_id
+        await socket_client.send(msg)
+
+
+@app.websocket("/ws")
+async def ws_endpoint(ws: WebSocket) -> None:
+    await ws.accept()
+    # btw this code sucks, fix allt he returns and ws.closes, there must be a better way to do this
+    try:
+
+        hs = await asyncio.wait_for(ws.receive_json(), timeout=AUTH_TIMEOUT)
+        if (hs["type"] == "authenticate") :
+            token_id = hs["token"]
+            async with db.engine.begin() as conn:
+                result = await conn.execute(
+                    text(
+                        """
+                        SELECT is_active FROM sessions WHERE token_id = :token_id
+                    """
+                    ).bindparams(token_id=token_id)
+                )
+                session = result.fetchone()
+                if not session:
+                    await ws.send_json({"type": "auth_fail", "reason": "session not found"})
+                    await ws.close()
+                    return
+            session = dict(session)
+            if not session["is_active"] :
+                await ws.send_json({"type": "auth_fail", "reason": "inactive session"})
+                await ws.close()
+                return
+
+            response = await socket_client.request({"type": "add_player", "sess_id": token_id})
+            if not response["success"]  :
+                await ws.send_json({"type": "auth_fail", "reason": "full session"})
+                await ws.close()
+                return
+            conn = await connections.register(token_id, ws)
+            conn.sender_task = asyncio.create_task(connections.sender_loop(conn))
+
+            recv_task = asyncio.create_task(receive_loop(ws, token_id))
+            done, pending = await asyncio.wait({conn.sender_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                    task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+            connections.unregister(token_id)
+            await socket_client.send({"type": "remove_player", "sess_id": token_id})
+            try: # so we don't try and close an already closed connection
+                await ws.close()
+            except Exception:
+                pass
+            return
+
+        else :
+            await ws.send_json({"type": "auth_fail", "reason": "not auth msg type"})
+            await ws.close()
+            return
+    except asyncio.TimeoutError:
+        await ws.send_json({"type": "auth_fail", "reason": "timeout error"})
+        print("ws_endpoint error: timeouterror")
+        await ws.close()
+        return
+    except WebSocketDisconnect:
+        print("ws_endpoint error: client closed mid handshake - websocket disconnect")
+        return
+    except Exception as e:
+        print(f"ws_endpoint error: {type(e).__name__}")
+        await ws.send_json({"type": "auth_fail", "reason": f"{type(e).__name__}"})
+        await ws.close()
+        return
+
+
 @app.get("/leaderboard")
 async def leaderboard():
     async with db.engine.begin() as conn:
@@ -212,6 +305,10 @@ async def death_updates():
                             """
                         )
                     )
+
+            if deaths["deaths"]:
+                max_id = max(death["id"] for death in deaths["deaths"])
+                await socket_client.send({"type": "death_ack", "acked_id": max_id})
 
             await asyncio.sleep(5)
     except Exception as e:
