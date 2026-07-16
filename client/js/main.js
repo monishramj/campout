@@ -1,17 +1,17 @@
-// Bootstrap: wires the login overlay, owns the /state poll loop, and starts /
+// Bootstrap: wires the login overlay, sets up ws snapshots, nd starts /
 // restarts the Phaser game. The scene reads the latest snapshot through a
-// closure (getState) so the network loop and render loop stay decoupled.
+// closure so the network loop and render loop stay decoupled.
 
-import { POLL_MS } from './config.js';
 import * as net from './network.js';
 import { GameScene } from './scene.js';
 import { initHud } from './hud.js';
 
 let game = null;
 let sessId = null;
-let latestState = null;
-let pollTimer = null;
 let startSession = null;
+let snapshotBuffer = [];
+
+const SNAPSHOT_MAX_BUFFER = 10;
 
 window.addEventListener('DOMContentLoaded', () => {
   initHud();
@@ -29,13 +29,45 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+
+function handleSnapshot(msg) {
+  snapshotBuffer.push(msg);
+  if (snapshotBuffer.length > SNAPSHOT_MAX_BUFFER) 
+    snapshotBuffer.shift();
+}
+
+function handleAuthFail(msg) {
+  hide('hud');
+  show('login-overlay');
+  setAuthMsg(`Connection rejected: ${msg.reason}`);
+}
+
+function handleKicked(msg) {
+  hide('hud');
+  show('login-overlay');
+  setAuthMsg('This session was opened in another tab.');
+  startSession = null;
+}
+
+function handleClose() {
+  hide('hud');
+  show('login-overlay');
+  setAuthMsg('Connection lost. Please log back in.');
+}
+
 async function beginSession(sessIdValue) {
   sessId = sessIdValue;
   const mapData = await net.getMap();
   hide('login-overlay');
   show('hud');
   startGame(mapData);
-  startPolling();
+  net.connect(sessId, {
+    onSnapshot: handleSnapshot,
+    onAuthFail: handleAuthFail,
+    onKicked: handleKicked,
+    onClose: handleClose,
+  });
+
 }
 
 async function startGuest() {
@@ -85,12 +117,12 @@ function startGame(mapData) {
     game.destroy(true);
     game = null;
   }
-  latestState = null;
+  snapshotBuffer = [];
 
   const data = {
     sessId,
     mapData,
-    getState: () => latestState,
+    getState: () => snapshotBuffer[snapshotBuffer.length - 1], // last one only for now
     onDeath: handleDeath,
   };
 
@@ -112,26 +144,8 @@ function startGame(mapData) {
   });
 }
 
-function startPolling() {
-  stopPolling();
-  pollTimer = setInterval(async () => {
-    try {
-      latestState = await net.getState();
-    } catch (e) {
-      // Transient gateway/socket hiccup — keep last snapshot, try next tick.
-    }
-  }, POLL_MS);
-}
-
-function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
-  }
-}
-
 async function handleDeath() {
-  stopPolling();
+  net.disconnect();
   document.getElementById('stat-days').textContent = '--';
   document.getElementById('stat-kills').textContent = '--';
   hide('hud');
@@ -151,6 +165,8 @@ async function handleDeath() {
     } catch (_) {}
   }
 }
+
+
 
 // --- tiny DOM helpers ---
 function show(id) { document.getElementById(id).classList.remove('hidden'); }

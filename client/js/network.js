@@ -1,8 +1,59 @@
-// Thin fetch wrappers over the gateway REST API. Same origin (served by
-// FastAPI), so no base URL / CORS needed. The gateway forwards these to the
-// C++ server over the Unix socket.
 
-import { ENDPOINTS } from './config.js';
+import { ENDPOINTS, wsUrl } from './config.js';
+
+let socket = null;
+
+export function connect(token, {onSnapshot, onAuthFail, onKicked, onClose}) {
+  socket = new WebSocket(wsUrl());
+
+  socket.onopen = () => {
+    socket.send(JSON.stringify({ type: 'authenticate', token}))
+  };
+
+   socket.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+      switch (msg.type) {
+        case 'snapshot':
+          onSnapshot(msg);
+          break;
+        case 'auth_fail':
+          onAuthFail(msg);
+          break;
+        case 'kicked':
+          onKicked(msg);
+          break;
+      }
+  };
+
+  socket.onclose = () => {
+    onClose?.()
+  };
+
+  socket.onerror = (err) => {
+    console.error('WebSocket error:', err);
+  };
+}
+
+export function disconnect() {
+  if (socket) {
+    socket.onclose = null; // intentional close — don't fire handleClose's
+                           // "connection lost" UI over an intended teardown
+    socket.close();
+    socket = null;
+  }
+}
+
+export function sendInput(dir) {
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: 'move_player', dir }))
+  }
+}
+
+export function sendAction(action) {
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: 'action', action }))
+  }
+}
 
 export async function guest() {
   const res = await fetch(ENDPOINTS.guest, { method: 'POST' });
@@ -42,19 +93,6 @@ export async function getMap() {
   return res.json(); // { width, height, tiles[x][y] }
 }
 
-export async function getState() {
-  const res = await fetch(ENDPOINTS.state);
-  if (!res.ok) throw new Error(`state failed: ${res.status}`);
-  return res.json(); // { tick, players[], items[] }
-}
-
-export async function sendInput(sessId, dir) {
-  return post({ type: 'move_player', sess_id: sessId, dir });
-}
-
-export async function sendAction(sessId, action) {
-  return post({ type: 'action', sess_id: sessId, action });
-}
 
 export async function getSessionStats(sessId) {
   const res = await fetch(`/session/${sessId}/stats`);
@@ -62,11 +100,4 @@ export async function getSessionStats(sessId) {
   return res.json(); // { days_survived, kills, is_active }
 }
 
-async function post(body) {
-  // Fire-and-forget: gateway returns immediately, C++ applies next tick.
-  await fetch(ENDPOINTS.input, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-}
+

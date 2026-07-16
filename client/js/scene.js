@@ -47,8 +47,8 @@ export class GameScene extends Phaser.Scene {
     this.time.addEvent({ delay: INPUT_MS, loop: true, callback: this.sendHeldMoves, callbackScope: this });
 
     // Actions are one-shot on keypress (not held).
-    this.input.keyboard.on('keydown-E', () => !this.dead && sendAction(this.sessId, 'CONSUME'));
-    this.input.keyboard.on('keydown-Q', () => !this.dead && sendAction(this.sessId, 'USE_FUEL'));
+    this.input.keyboard.on('keydown-E', () => !this.dead && sendAction('CONSUME'));
+    this.input.keyboard.on('keydown-Q', () => !this.dead && sendAction('USE_FUEL'));
   }
 
   drawTiles() {
@@ -76,10 +76,10 @@ export class GameScene extends Phaser.Scene {
   sendHeldMoves() {
     if (this.dead) return;
     const k = this.keys;
-    if (k.W.isDown) sendInput(this.sessId, DIR.UP);
-    if (k.S.isDown) sendInput(this.sessId, DIR.DOWN);
-    if (k.A.isDown) sendInput(this.sessId, DIR.LEFT);
-    if (k.D.isDown) sendInput(this.sessId, DIR.RIGHT);
+    if (k.W.isDown) sendInput(DIR.UP);
+    if (k.S.isDown) sendInput(DIR.DOWN);
+    if (k.A.isDown) sendInput(DIR.LEFT);
+    if (k.D.isDown) sendInput(DIR.RIGHT);
   }
 
   update() {

@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
+#include <csignal>
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
@@ -384,44 +385,49 @@ void tick() {
 
   // input q - player add/remove, mvm, actions
   for (InputMsg &msg : input_v) {
+    try {
 
-    if (msg.type == "add_player") {
-      Player p{};
-      p.sess_id = msg.sess_id;
-      bool player_added = add_player(p);
-      nlohmann::json resp;
-      resp["type"] = "add_player";
-      resp["req_id"] = msg.j.value("req_id", "");
-      resp["success"] = player_added;
-      enqueue_write({msg.client_fd, resp.dump() + "\n"});
-    } else if (msg.type == "remove_player") {
-      // phase 3: mark sessions inactive, meaning equivalent to death so a
-      // session stops then make sure that way the days survived is counted
-      // accurately if player leaves they must restart the game to play again,
-      // so they will have to start from day 1
-      remove_player(msg.sess_id);
-    } else if (msg.type == "move_player") {
-      move_player_intent(msg.sess_id, msg.j["dir"].get<InputType>());
-    } else if (msg.type == "action") {
-      handle_player_action(msg.sess_id, msg.j);
-      // } else if (msg.type == "snapshot") {
-      //   std::string state = get_snapshot() + "\n";
-      //   enqueue_write({msg.client_fd, state});
-    } else if (msg.type == "get_map") {
-      std::string m = get_map(msg.j.value("req_id", "")) + "\n";
-      enqueue_write({msg.client_fd, m});
-    } else if (msg.type == "get_deaths") {
-      std::string deaths = _get_deaths(msg.j.value("req_id", "")) + "\n";
-      enqueue_write({msg.client_fd, deaths});
-    } else if (msg.type == "death_ack") {
-      uint64_t acked_id = msg.j.value("acked_id", (uint64_t)0);
-      while (!death_q.empty() && death_q.front().id <= acked_id) {
-        death_q.pop_front();
+      if (msg.type == "add_player") {
+        Player p{};
+        p.sess_id = msg.sess_id;
+        bool player_added = add_player(p);
+        nlohmann::json resp;
+        resp["type"] = "add_player";
+        resp["req_id"] = msg.j.value("req_id", "");
+        resp["success"] = player_added;
+        enqueue_write({msg.client_fd, resp.dump() + "\n"});
+      } else if (msg.type == "remove_player") {
+        // phase 3: mark sessions inactive, meaning equivalent to death so a
+        // session stops then make sure that way the days survived is counted
+        // accurately if player leaves they must restart the game to play again,
+        // so they will have to start from day 1
+        remove_player(msg.sess_id);
+      } else if (msg.type == "move_player") {
+        move_player_intent(msg.sess_id, msg.j["dir"].get<InputType>());
+      } else if (msg.type == "action") {
+        handle_player_action(msg.sess_id, msg.j);
+        // } else if (msg.type == "snapshot") {
+        //   std::string state = get_snapshot() + "\n";
+        //   enqueue_write({msg.client_fd, state});
+      } else if (msg.type == "get_map") {
+        std::string m = get_map(msg.j.value("req_id", "")) + "\n";
+        enqueue_write({msg.client_fd, m});
+      } else if (msg.type == "get_deaths") {
+        std::string deaths = _get_deaths(msg.j.value("req_id", "")) + "\n";
+        enqueue_write({msg.client_fd, deaths});
+      } else if (msg.type == "death_ack") {
+        uint64_t acked_id = msg.j.value("acked_id", (uint64_t)0);
+        while (!death_q.empty() && death_q.front().id <= acked_id) {
+          death_q.pop_front();
+        }
+      } else {
+        std::cerr << "Unknown message type: " << msg.type << std::endl;
       }
-    } else {
-      std::cerr << "Unknown message type: " << msg.type << std::endl;
+      // TODO: add health checks for combat
+    } catch (const std::exception &e) {
+      std::cerr << e.what() << ", msg.type: " << msg.type
+                << ", msg.json: " << msg.j << '\n';
     }
-    // TODO: add health checks for combat
   }
 
   // currently looping thru everything: naive approach, can be fixed later if

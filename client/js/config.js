@@ -61,10 +61,13 @@ export const ENDPOINTS = Object.freeze({
   guest: "/guest",
   login: "/login",
   register: "/register",
-  state: "/state",
   map: "/map",
-  input: "/input",
+  ws: "/ws"
 });
 
 export const INPUT_MS = 50; // how often held movement keys are sent
-export const POLL_MS = 100; // how often /state is polled
+
+export function wsUrl() {
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  return `${scheme}://${location.host}${ENDPOINTS.ws}`;
+}
