@@ -66,7 +66,7 @@ def upgrade() -> None:
     ('MELEE', 'Melee Weapon', '{"damage": 10, "range": 1.5}'),
     ('FOOD',  'Food',         '{"restore": 25}')
   """)
-    
+
     op.create_table(
         "campsites",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
