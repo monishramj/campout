@@ -47,6 +47,10 @@ int tick_count = 0;
 int server_fd = -1;
 std::atomic<int> gateway_fd{-1};
 
+static volatile sig_atomic_t g_shutdown = 0;
+
+void on_sigterm(int) { g_shutdown = 1; }
+
 static bool write_all(int fd, const std::string &data) {
   size_t total = 0;
   while (total < data.size()) {
@@ -203,37 +207,35 @@ bool add_player(Player player) {
 
 void remove_player(std::string sess_id) { players.erase(sess_id); }
 
-void move_player(std::string sess_id, InputType dir) {
+void move_player_intent(std::string sess_id, InputType dir) {
   if (players.find(sess_id) == players.end())
     return;
   Player &player = players[sess_id];
-  float new_x = player.x;
-  float new_y = player.y;
 
   switch (dir) {
   case MOVE_LEFT:
-    new_x -= PLAYER_SPEED;
+    player.intent_dx = -1;
     break;
   case MOVE_RIGHT:
-    new_x += PLAYER_SPEED;
+    player.intent_dx = 1;
     break;
   case MOVE_UP:
-    new_y += PLAYER_SPEED;
+    player.intent_dy = 1;
     break;
   case MOVE_DOWN:
-    new_y -= PLAYER_SPEED;
+    player.intent_dy = -1;
     break;
   default:
     break;
   }
 
-  if (new_x >= 0 && new_x < MAP_WIDTH && new_y >= 0 && new_y < MAP_HEIGHT) {
-    if (map[(int)new_x][(int)new_y] < WALL) // make explicit function check
-    {
-      player.x = new_x;
-      player.y = new_y;
-    }
-  }
+  // if ((new_x >= 0) && (new_x < MAP_WIDTH) && (new_y >= 0) &&
+  //     (new_y < MAP_HEIGHT)) {
+  //   if (is_passable(map[(int)new_x][(int)new_y])) {
+  //     player.x = new_x;
+  //     player.y = new_y;
+  //   }
+  // }
 }
 
 void handle_player_action(std::string sess_id, nlohmann::json &j) {
@@ -344,6 +346,29 @@ std::string _get_deaths(const std::string &req_id) {
   return j.dump();
 }
 
+void apply_player_movement(Player *player) {
+  float dx = player->intent_dx;
+  float dy = player->intent_dy;
+  float mag = std::sqrt(dx * dx + dy * dy); // pythageorueoues!
+  if (mag > 0) {
+    float step = std::min(PLAYER_SPEED, mag) / mag;
+    float nx = player->x + dx * step;
+    float ny = player->y + dy * step;
+    if ((nx >= 0) && (nx < MAP_WIDTH) && (ny >= 0) && (ny < MAP_HEIGHT)) {
+      if (is_passable(nx, ny)) {
+        player->x = nx;
+        player->y = ny;
+      } else if (is_passable(nx, player->y)) {
+        player->x = nx;
+      } else if (is_passable(player->x, ny)) {
+        player->y = ny;
+      }
+    }
+  }
+  player->intent_dx = 0;
+  player->intent_dy = 0;
+}
+
 void tick() {
   tick_count++;
 
@@ -376,7 +401,7 @@ void tick() {
       // so they will have to start from day 1
       remove_player(msg.sess_id);
     } else if (msg.type == "move_player") {
-      move_player(msg.sess_id, msg.j["dir"].get<InputType>());
+      move_player_intent(msg.sess_id, msg.j["dir"].get<InputType>());
     } else if (msg.type == "action") {
       handle_player_action(msg.sess_id, msg.j);
       // } else if (msg.type == "snapshot") {
@@ -441,14 +466,23 @@ void tick() {
         items[i].active = false;
       }
     }
+
+    // player mvm
+    apply_player_movement(&player);
   }
 
   for (std::string sess_id : dead_players) {
     int days_survived =
         (tick_count - players[sess_id].joined_tick) / DAY_LENGTH;
     DeathEvent event = {next_death_id++, sess_id, players[sess_id].kills,
-                         days_survived};
+                        days_survived};
     death_q.push_back(event);
+    if (death_q.size() > MAX_PENDING_DEATHS) {
+      std::cerr << "max pending death @ " << tick_count
+                << ", sess_id = " << death_q.front().sess_id
+                << ", id = " << death_q.front().id << "\n";
+      death_q.pop_front();
+    }
     remove_player(sess_id);
   }
 
@@ -486,7 +520,7 @@ void start() {
   double owed_time = 0;
 
   // game loop
-  while (1) {
+  while (!g_shutdown) {
     auto start = std::chrono::steady_clock::now();
     double frame_time =
         (std::chrono::duration<double, std::milli>(start - prev)).count();
@@ -515,4 +549,6 @@ void start() {
     std::this_thread::sleep_for(
         std::chrono::duration<double, std::milli>(owed_time));
   }
+  // TODO phase 5: flush death_q to gateway, wait for acks, then exit
+  exit(0);
 }

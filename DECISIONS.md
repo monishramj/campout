@@ -1,4 +1,4 @@
-## Phase 2.5
+## Phase 3
 
 - for the read(), wrap in a try catch?
 - no, just if else for return val
@@ -17,8 +17,8 @@
     - this will be fixed soon with websockets
 
 - PROTOCOL done: multiplexing is one connection with types for each msg, and an
-  req_id (the sess_id), response echoes it. both are needed for single
-  connection. moving away from two connections.
+  req_id, response echoes it. both are needed for single connection. moving away
+  from two connections.
 
 - fixed timestep, now simulates missed timesteps and caps
   - issue is that i beleive the day system might be a little cooked but i think
@@ -26,3 +26,9 @@
 
 - !ISSUE!! : tick rate based day system is variable and not right, make it
   server side on a set itmer so tick lag doens't increase day itme length
+
+- forest is a border tile
+
+- max pending death = 5000, drop-oldest policy, if postgres down just
+
+- movement fixed: slide on walls + stop on opposing directions

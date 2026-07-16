@@ -13,8 +13,10 @@ constexpr int MAX_FRAME_TIME_MULTIPLIER = 5;
 constexpr int MAX_OWED_TICKS = 15;
 constexpr float CAMPFIRE_RATE = .083f;
 constexpr int DAY_LENGTH = 7200;
+
 constexpr size_t MAX_LINE_LEN = 8192;
 constexpr size_t MAX_PLAYERS = 50;
+constexpr size_t MAX_PENDING_DEATHS = 5000;
 
 constexpr float HEALTH_DRAIN_RATE = .04f;
 constexpr float FOOD_DRAIN_RATE = .02f;
@@ -33,8 +35,10 @@ void start();
 void tick();
 bool add_player(Player player);
 void remove_player(std::string sess_id);
-void move_player(std::string sess_id, InputType dir);
+void move_player_intent(std::string sess_id, InputType dir);
+void apply_player_movement(Player *player);
 void handle_player_action(std::string sess_id, nlohmann::json &j);
+void on_sigterm(int);
 static bool write_all(int fd, const std::string &data);
 // std::string get_state();
 std::string get_snapshot();

@@ -12,4 +12,4 @@ COPY client /client/
 # compose will publish, keep in mind
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--port", "8000", "--host", "0.0.0.0"]
+CMD ["uvicorn", "main:app", "--port", "8000", "--host", "0.0.0.0", "--ws-ping-interval", "15", "--ws-ping-timeout", "15"]

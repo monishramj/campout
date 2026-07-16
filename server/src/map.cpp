@@ -37,3 +37,15 @@ TileType map[MAP_WIDTH][MAP_HEIGHT] = {
 #undef P
 
 WorldItem items[MAX_ITEMS]{};
+
+bool is_passable(float x, float y) {
+  TileType t = map[(int)x][(int)y];
+  switch (t) {
+  case GRASS:
+    return true;
+  case HOUSE_FLOOR:
+    return true;
+  default:
+    return false;
+  }
+}

@@ -4,8 +4,7 @@
 #include "types.h"
 #include <string>
 
-struct WorldItem
-{
+struct WorldItem {
   ItemType type;
   std::string subtype;
   float x;
@@ -18,5 +17,7 @@ constexpr int MAP_HEIGHT = 20;
 constexpr int MAX_ITEMS = 100;
 extern TileType map[MAP_WIDTH][MAP_HEIGHT];
 extern WorldItem items[MAX_ITEMS]; // set amount for now
+
+bool is_passable(float x, float y);
 
 #endif

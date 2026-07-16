@@ -1,16 +1,21 @@
 import asyncio
 import json
+import random
 import uuid
 from typing import Optional, Callable
 
 SOCKET_PATH = "/tmp/campout.sock"
 REQUEST_TIMEOUT = 5.0
+INITIAL_BACKOFF = 0.5  # seconds, first retry delay
+MAX_BACKOFF = 10.0  # seconds, cap on retry delay
+BACKOFF_JITTER = 0.2  # +/- fraction of the delay, avoids thundering-herd retries
 
 _reader: Optional[asyncio.StreamReader] = None
 _writer: Optional[asyncio.StreamWriter] = None
 _write_lock = asyncio.Lock()
 _pending: dict[str, asyncio.Future] = {}
 _snapshot_handler: Optional[Callable[[dict], None]] = None
+_connected = asyncio.Event()
 
 
 def set_snapshot_handler(handler: Callable[[dict], None]) -> None:
@@ -21,7 +26,31 @@ def set_snapshot_handler(handler: Callable[[dict], None]) -> None:
 async def connect():
     global _reader, _writer
     _reader, _writer = await asyncio.open_unix_connection(SOCKET_PATH)
-    asyncio.create_task(_reader_loop())
+    _connected.set()
+    asyncio.create_task(_supervisor())
+
+
+async def _supervisor() -> None:
+    while (1):
+        await _reader_loop()
+        await _reconnect_with_backoff()
+
+
+async def _reconnect_with_backoff() -> None:
+    global _reader, _writer
+    delay = INITIAL_BACKOFF
+    while True:
+        try:
+            _reader, _writer = await asyncio.open_unix_connection(SOCKET_PATH)
+            _connected.set()
+            print("socket_client: reconnected to C++")
+            return
+        except (ConnectionRefusedError, FileNotFoundError, OSError) as e:
+            jitter = delay * BACKOFF_JITTER
+            wait = max(delay + random.uniform(-jitter, jitter), 0)
+            print(f"socket_client: reconnect failed ({type(e).__name__}), retrying in {wait:.1f}s")
+            await asyncio.sleep(wait)
+            delay = min(delay * 2, MAX_BACKOFF)
 
 
 async def _reader_loop():
@@ -33,6 +62,7 @@ async def _reader_loop():
     while True:
         line = await _reader.readline()
         if (line == b''):
+            _connected.clear()
             for future in _pending.values():
                 if not future.done():
                     future.set_exception(ConnectionError("socket EOF"))
@@ -65,11 +95,15 @@ async def _write(msg: dict):
 
 async def send(msg: dict):
     # no reply expected
+    if not _connected.is_set():
+        raise ConnectionError("not connected to C++")
     async with _write_lock:
         await _write(msg)
 
 
 async def request(msg: dict) -> dict:
+    if not _connected.is_set():
+        raise ConnectionError("not connected to C++")
     req_id = uuid.uuid4().hex
     msg["req_id"] = req_id
     future = asyncio.get_running_loop().create_future()
