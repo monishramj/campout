@@ -56,13 +56,19 @@ export const COLOR_OTHER = 0x4db8ff;
 export const COLOR_FIRE_LIT = 0xff6622;
 export const COLOR_FIRE_OUT = 0x555555;
 
+// How far in the past we render other entities. We interpolate BETWEEN two
+// snapshots we already hold, so we need one ahead of the render time -- that
+// means rendering a couple of snapshots behind. Bigger = smoother under jitter,
+// but staler.
+export const RENDER_DELAY_MS = 200;
+
 // Network / cadence
 export const ENDPOINTS = Object.freeze({
   guest: "/guest",
   login: "/login",
   register: "/register",
   map: "/map",
-  ws: "/ws"
+  ws: "/ws",
 });
 
 export const INPUT_MS = 50; // how often held movement keys are sent
