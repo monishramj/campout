@@ -2,6 +2,7 @@
 #define PLAYER_H
 
 #include "types.h"
+#include <deque>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,14 @@ struct InventoryItem {
   ItemType type;
   std::string subtype;
   int amt;
+};
+
+// One client input cycle == one server step. Every move_player message the
+// client sent in the same cycle shares a seq and folds into one of these, so a
+// diagonal is one step, not two.
+struct IntentCycle {
+  int seq;
+  float dx = 0, dy = 0;
 };
 
 struct Player {
@@ -29,7 +38,12 @@ struct Player {
   std::string name;
   std::vector<InventoryItem> inven;
 
-  float intent_dx = 0, intent_dy = 0;
+  // Cycles wait their turn instead of overwriting each other -- exactly one is
+  // applied per tick. That IS the speed cap (0.D): a client spamming inputs just
+  // fills the queue, it never gets more than one step per tick. Collapsing them
+  // (the old behaviour) silently ate cycles the client had already predicted.
+  std::deque<IntentCycle> intent_q;
+  int last_procs_seq = -1; // -1 = nothing applied yet; seq 0 is a real cycle
 };
 
 #endif

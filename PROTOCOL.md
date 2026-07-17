@@ -30,12 +30,12 @@ req_id: UUID, not based off time, unique per request, echoed in response. newly
 gen by whoever sends request (the gateway, for every C++-bound request) -- NOT
 the sess_id, since one session issues many requests and sess_id can't
 disambiguate between them. Messages with no request/response pairing
-(`move_player`, `player_action`, `attack`, `snapshot`, `death_ack`) do not carry
+(`move_player`, `action`, `attack`, `snapshot`, `death_ack`) do not carry
 a req_id.
 
 ### Messages: gateway -> C++
 
-type: add_player, remove_player, move_player, player_action, attack, get_map,
+type: add_player, remove_player, move_player, action, attack, get_map,
 death_ack
 
 json body
@@ -56,11 +56,22 @@ json body
 
 - move_player
   - sess_id
+  - seq
+    - identifies the client INPUT CYCLE, not the message. every direction held
+      in one cycle is sent as its own message sharing that seq; C++ folds them
+      into one intent vector (per-axis, last one wins) so a diagonal is one
+      step, not two. monotonically increasing per session.
   - direction
-    - accumulated into a per-tick intent vector server-side (0.D), not applied
+    - folded into the cycle's intent vector server-side (0.D), not applied
       immediately -- fire-and-forget, no req_id
+  - cycles QUEUE server-side and exactly one is applied per tick (that is the
+    per-tick speed cap -- spamming inputs just fills the queue, capped at
+    MAX_PENDING_INTENTS, drop-oldest on overflow). a cycle is never collapsed
+    into another, so "one client cycle == one step" holds exactly and client
+    prediction does not drift.
+  - a message whose seq <= last_procs_seq is ignored (its cycle already ran)
 
-- player_action
+- action
   - sess_id
   - action_type
     - CONSUME
@@ -89,6 +100,10 @@ snapshot sent out every tick to gateway, no req_id:
 - world_id
   - reserved for Phase 4 sharding; always 0 for now
 - players[]
+  - last_procs_seq
+    - highest move_player seq whose cycle is APPLIED into this snapshot's x/y
+      (acked on apply, not on receive). the client drops every pending cycle
+      <= this and replays the rest from x/y. -1 before any cycle has run.
 - items[]
 - entities[]
 - cycle

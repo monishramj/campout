@@ -208,23 +208,41 @@ bool add_player(Player player) {
 
 void remove_player(std::string sess_id) { players.erase(sess_id); }
 
-void move_player_intent(std::string sess_id, InputType dir) {
+void move_player_intent(std::string sess_id, InputType dir, int seq) {
+
   if (players.find(sess_id) == players.end())
     return;
   Player &player = players[sess_id];
 
+  // Already applied this cycle -- its earlier messages landed in a previous
+  // tick. The client has dropped it from pending, so stepping again would
+  // desync prediction.
+  if (seq <= player.last_procs_seq)
+    return;
+
+  // Same seq == same cycle: fold into the open one. New seq == new cycle.
+  if (player.intent_q.empty() || player.intent_q.back().seq != seq) {
+    if (player.intent_q.size() >= MAX_PENDING_INTENTS) {
+      // Client is outrunning the tick. Drop the oldest: it's the most stale
+      // input, and the client's reconciliation will correct for it.
+      player.intent_q.pop_front();
+    }
+    player.intent_q.push_back({seq, 0, 0});
+  }
+  IntentCycle &cycle = player.intent_q.back();
+
   switch (dir) {
   case MOVE_LEFT:
-    player.intent_dx = -1;
+    cycle.dx = -1;
     break;
   case MOVE_RIGHT:
-    player.intent_dx = 1;
+    cycle.dx = 1;
     break;
   case MOVE_UP:
-    player.intent_dy = 1;
+    cycle.dy = 1;
     break;
   case MOVE_DOWN:
-    player.intent_dy = -1;
+    cycle.dy = -1;
     break;
   default:
     break;
@@ -297,7 +315,8 @@ std::string get_snapshot() {
                             {"fuel", player.campsite.fuel},
                             {"campsite_x", player.campsite.xpos},
                             {"campsite_y", player.campsite.ypos},
-                            {"inventory", inv}});
+                            {"inventory", inv},
+                            {"last_procs_seq", player.last_procs_seq}});
   }
 
   j["items"] = nlohmann::json::array();
@@ -348,8 +367,20 @@ std::string _get_deaths(const std::string &req_id) {
 }
 
 void apply_player_movement(Player *player) {
-  float dx = player->intent_dx;
-  float dy = player->intent_dy;
+  // Exactly ONE queued cycle per tick -- the per-tick speed cap (0.D). Anything
+  // else waits for the next tick rather than being collapsed away, so "one
+  // client cycle == one step" holds exactly and prediction never drifts.
+  if (player->intent_q.empty())
+    return;
+
+  const IntentCycle cycle = player->intent_q.front();
+  player->intent_q.pop_front();
+  // Ack on APPLY, not on receive: last_procs_seq means "the last cycle actually
+  // baked into the x/y in this snapshot", which is what the client replays from.
+  player->last_procs_seq = cycle.seq;
+
+  float dx = cycle.dx;
+  float dy = cycle.dy;
   float mag = std::sqrt(dx * dx + dy * dy); // pythageorueoues!
   if (mag > 0) {
     float step = std::min(PLAYER_SPEED, mag) / mag;
@@ -366,8 +397,6 @@ void apply_player_movement(Player *player) {
       }
     }
   }
-  player->intent_dx = 0;
-  player->intent_dy = 0;
 }
 
 void tick() {
@@ -403,7 +432,8 @@ void tick() {
         // so they will have to start from day 1
         remove_player(msg.sess_id);
       } else if (msg.type == "move_player") {
-        move_player_intent(msg.sess_id, msg.j["dir"].get<InputType>());
+        move_player_intent(msg.sess_id, msg.j["dir"].get<InputType>(),
+                           msg.j["seq"].get<int>());
       } else if (msg.type == "action") {
         handle_player_action(msg.sess_id, msg.j);
         // } else if (msg.type == "snapshot") {

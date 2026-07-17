@@ -17,6 +17,9 @@ constexpr int DAY_LENGTH = 7200;
 constexpr size_t MAX_LINE_LEN = 8192;
 constexpr size_t MAX_PLAYERS = 50;
 constexpr size_t MAX_PENDING_DEATHS = 5000;
+// Queued input cycles per player. A client sending at INPUT_MS sits at ~1; this
+// only trips on a client outrunning the tick (lag burst, or a cheat attempt).
+constexpr size_t MAX_PENDING_INTENTS = 8;
 
 constexpr float HEALTH_DRAIN_RATE = .04f;
 constexpr float FOOD_DRAIN_RATE = .02f;
